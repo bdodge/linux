@@ -583,8 +583,8 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	    vchiq_mmal_port_enable(dev->instance, dev->capture.port, buffer_cb);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev,
-			"Failed to enable capture port - error %d. "
-			"Disabling camera port again\n", ret);
+			"Failed to enable capture port - error %d. Disabling camera port again\n",
+			ret);
 
 		vchiq_mmal_port_disable(dev->instance,
 					dev->capture.camera_port);
