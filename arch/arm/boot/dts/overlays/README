@@ -439,6 +439,12 @@ Load:   dtoverlay=balena-fin
 Params: <None>
 
 
+Name:   bcm2835-codec
+Info:   Overlay that enables the V4L2 M2M codec driver
+Load:   dtoverlay=bcm2835-codec
+Params: <None>
+
+
 Name:   bmp085_i2c-sensor
 Info:   This overlay is now deprecated - see i2c-sensor
 Load:   dtoverlay=bmp085_i2c-sensor
