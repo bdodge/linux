@@ -86,11 +86,16 @@ struct em28xx_IR {
 static int em28xx_get_key_terratec(struct i2c_client *i2c_dev,
 				   enum rc_proto *protocol, u32 *scancode)
 {
+	int rc;
 	unsigned char b;
 
 	/* poll IR chip */
-	if (1 != i2c_master_recv(i2c_dev, &b, 1))
+	rc = i2c_master_recv(i2c_dev, &b, 1);
+	if (rc != 1) {
+		if (rc < 0)
+			return rc;
 		return -EIO;
+	}
 
 	/* it seems that 0xFE indicates that a button is still hold
 	   down, while 0xff indicates that no button is hold down. */
