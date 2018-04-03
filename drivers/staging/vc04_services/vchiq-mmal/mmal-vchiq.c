@@ -18,14 +18,15 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/btree.h>
+#include <linux/completion.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
-#include <linux/mutex.h>
 #include <linux/mm.h>
+#include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/slab.h>
-#include <linux/completion.h>
 #include <linux/vmalloc.h>
-#include <linux/btree.h>
 #include <asm/cacheflush.h>
 
 #include "mmal-common.h"
@@ -39,6 +40,11 @@
 
 #define USE_VCHIQ_ARM
 #include "interface/vchi/vchi.h"
+
+MODULE_DESCRIPTION("BCM2835 MMAL VCHIQ interface");
+MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.org>");
+MODULE_LICENSE("GPL");
+MODULE_VERSION("0.0.1");
 
 /* maximum number of components supported */
 #define VCHIQ_MMAL_MAX_COMPONENTS 10
@@ -97,7 +103,7 @@ static const char *const port_action_type_names[] = {
 #if defined(FULL_MSG_DUMP)
 #define DBG_DUMP_MSG(MSG, MSG_LEN, TITLE)				\
 	do {								\
-		pr_debug(TITLE" type:%s(%d) length:%d\n",		\
+		pr_debug(TITLE " type:%s(%d) length:%d\n",		\
 			 msg_type_names[(MSG)->h.type],			\
 			 (MSG)->h.type, (MSG_LEN));			\
 		print_hex_dump(KERN_DEBUG, "<<h: ", DUMP_PREFIX_OFFSET,	\
@@ -111,7 +117,7 @@ static const char *const port_action_type_names[] = {
 #else
 #define DBG_DUMP_MSG(MSG, MSG_LEN, TITLE)				\
 	{								\
-		pr_debug(TITLE" type:%s(%d) length:%d\n",		\
+		pr_debug(TITLE " type:%s(%d) length:%d\n",		\
 			 msg_type_names[(MSG)->h.type],			\
 			 (MSG)->h.type, (MSG_LEN));			\
 	}
@@ -1657,6 +1663,7 @@ release_unlock:
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_port_set_format);
 
 int vchiq_mmal_port_parameter_set(struct vchiq_mmal_instance *instance,
 				  struct vchiq_mmal_port *port,
@@ -1676,6 +1683,7 @@ int vchiq_mmal_port_parameter_set(struct vchiq_mmal_instance *instance,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_port_parameter_set);
 
 int vchiq_mmal_port_parameter_get(struct vchiq_mmal_instance *instance,
 				  struct vchiq_mmal_port *port,
@@ -1692,6 +1700,7 @@ int vchiq_mmal_port_parameter_get(struct vchiq_mmal_instance *instance,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_port_parameter_get);
 
 /* enable a port
  *
@@ -1722,6 +1731,7 @@ unlock:
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_port_enable);
 
 int vchiq_mmal_port_disable(struct vchiq_mmal_instance *instance,
 			    struct vchiq_mmal_port *port)
@@ -1742,6 +1752,7 @@ int vchiq_mmal_port_disable(struct vchiq_mmal_instance *instance,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_port_disable);
 
 /* ports will be connected in a tunneled manner so data buffers
  * are not handled by client.
@@ -1829,6 +1840,7 @@ release_unlock:
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_port_connect_tunnel);
 
 int vchiq_mmal_submit_buffer(struct vchiq_mmal_instance *instance,
 			     struct vchiq_mmal_port *port,
@@ -1875,6 +1887,7 @@ int vchiq_mmal_submit_buffer(struct vchiq_mmal_instance *instance,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_submit_buffer);
 
 int mmal_vchi_buffer_init(struct vchiq_mmal_instance *instance,
 			  struct mmal_buffer *buf)
@@ -1888,6 +1901,7 @@ int mmal_vchi_buffer_init(struct vchiq_mmal_instance *instance,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mmal_vchi_buffer_init);
 
 int mmal_vchi_buffer_cleanup(struct mmal_buffer *buf)
 {
@@ -1910,6 +1924,7 @@ int mmal_vchi_buffer_cleanup(struct mmal_buffer *buf)
 #endif
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mmal_vchi_buffer_cleanup);
 
 static void init_event_context(struct vchiq_mmal_instance *instance,
 			       struct vchiq_mmal_port *port)
@@ -2041,6 +2056,7 @@ unlock:
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_component_init);
 
 /*
  * cause a mmal component to be destroyed
@@ -2071,6 +2087,7 @@ int vchiq_mmal_component_finalise(struct vchiq_mmal_instance *instance,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_component_finalise);
 
 /*
  * cause a mmal component to be enabled
@@ -2096,6 +2113,7 @@ int vchiq_mmal_component_enable(struct vchiq_mmal_instance *instance,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_component_enable);
 
 /*
  * cause a mmal component to be enabled
@@ -2121,6 +2139,7 @@ int vchiq_mmal_component_disable(struct vchiq_mmal_instance *instance,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_component_disable);
 
 int vchiq_mmal_version(struct vchiq_mmal_instance *instance,
 		       u32 *major_out, u32 *minor_out)
@@ -2136,6 +2155,7 @@ int vchiq_mmal_version(struct vchiq_mmal_instance *instance,
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_version);
 
 int vchiq_mmal_finalise(struct vchiq_mmal_instance *instance)
 {
@@ -2163,6 +2183,7 @@ int vchiq_mmal_finalise(struct vchiq_mmal_instance *instance)
 
 	return status;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_finalise);
 
 int vchiq_mmal_init(struct vchiq_mmal_instance **out_instance)
 {
@@ -2250,3 +2271,4 @@ err_close_services:
 	kfree(instance);
 	return -ENODEV;
 }
+EXPORT_SYMBOL_GPL(vchiq_mmal_init);

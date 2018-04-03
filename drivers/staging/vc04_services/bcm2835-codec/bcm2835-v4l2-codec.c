@@ -35,10 +35,10 @@
 #include <media/v4l2-event.h>
 #include <media/videobuf2-dma-contig.h>
 
-#include "mmal-msg.h"
-#include "mmal-encodings.h"
-#include "mmal-parameters.h"
-#include "mmal-vchiq.h"
+#include "vchiq-mmal/mmal-msg.h"
+#include "vchiq-mmal/mmal-encodings.h"
+#include "vchiq-mmal/mmal-parameters.h"
+#include "vchiq-mmal/mmal-vchiq.h"
 
 MODULE_DESCRIPTION("BCM2835 codec V4L2 driver");
 MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.org>");
@@ -214,6 +214,11 @@ struct bcm2835_codec_q_data {
 enum {
 	V4L2_M2M_SRC = 0,
 	V4L2_M2M_DST = 1,
+};
+
+struct m2m_mmal_buffer {
+	struct v4l2_m2m_buffer	m2m;
+	struct mmal_buffer	mmal;
 };
 
 static inline struct bcm2835_codec_fmt_list *get_format_list(bool decode,

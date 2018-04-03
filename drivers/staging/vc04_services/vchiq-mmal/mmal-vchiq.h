@@ -53,7 +53,7 @@ typedef void (*vchiq_mmal_buffer_cb)(
 struct vchiq_mmal_port {
 	bool enabled;
 	u32 handle;
-	u32 type; 	/* port type (enum vchiq_mmal_port_type), cached to use
+	u32 type;	/* port type (enum vchiq_mmal_port_type), cached to use
 			 * on port info set
 			 */
 	u32 index; /* port index, cached to use on port info set */

@@ -66,11 +66,6 @@ struct mmal_buffer {
 	s64 pts;
 };
 
-struct m2m_mmal_buffer {
-	struct v4l2_m2m_buffer	m2m;
-	struct mmal_buffer 	mmal;
-};
-
 /* */
 struct mmal_colourfx {
 	s32 enable;
