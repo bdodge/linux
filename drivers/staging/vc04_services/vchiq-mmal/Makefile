@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
-bcm2835-codec-objs := bcm2835-v4l2-codec.o
+bcm2835-mmal-vchiq-objs := mmal-vchiq.o
 
-obj-$(CONFIG_VIDEO_DECODE_BCM2835) += bcm2835-codec.o
+obj-$(CONFIG_BCM2835_VCHIQ_MMAL) += bcm2835-mmal-vchiq.o
 
 ccflags-y += \
 	-Idrivers/staging/vc04_services \

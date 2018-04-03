@@ -355,7 +355,7 @@ struct mmal_msg_port_parameter_get_reply {
 
 #define MMAL_EVENT_ERROR		MMAL_FOURCC('E', 'R', 'R', 'O')
 #define MMAL_EVENT_EOS			MMAL_FOURCC('E', 'E', 'O', 'S')
-#define MMAL_EVENT_FORMAT_CHANGED 	MMAL_FOURCC('E', 'F', 'C', 'H')
+#define MMAL_EVENT_FORMAT_CHANGED	MMAL_FOURCC('E', 'F', 'C', 'H')
 #define MMAL_EVENT_PARAMETER_CHANGED	MMAL_FOURCC('E', 'P', 'C', 'H')
 
 /* Structs for each of the event message payloads */

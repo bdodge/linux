@@ -15,6 +15,7 @@ obj-$(CONFIG_SND_BCM2835)	+= bcm2835-audio/
 obj-$(CONFIG_VIDEO_BCM2835)	+= bcm2835-camera/
 obj-$(CONFIG_BCM_VC_SM_CMA)	+= vc-sm-cma/
 obj-$(CONFIG_VIDEO_DECODE_BCM2835) += bcm2835-codec/
+obj-$(CONFIG_BCM2835_VCHIQ_MMAL) += vchiq-mmal/
 
 ccflags-y += -DVCOS_VERIFY_BKPTS=1 -Idrivers/staging/vc04_services -DUSE_VCHIQ_ARM -D__VCCOREVER__=0x04000000
 
