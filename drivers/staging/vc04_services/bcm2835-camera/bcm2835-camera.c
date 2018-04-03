@@ -29,11 +29,11 @@
 #include <media/v4l2-common.h>
 #include <linux/delay.h>
 
-#include "mmal-common.h"
-#include "mmal-encodings.h"
-#include "mmal-vchiq.h"
-#include "mmal-msg.h"
-#include "mmal-parameters.h"
+#include "vchiq-mmal/mmal-common.h"
+#include "vchiq-mmal/mmal-encodings.h"
+#include "vchiq-mmal/mmal-vchiq.h"
+#include "vchiq-mmal/mmal-msg.h"
+#include "vchiq-mmal/mmal-parameters.h"
 #include "bcm2835-camera.h"
 
 #define BM2835_MMAL_VERSION "0.0.2"
@@ -84,6 +84,12 @@ static const struct v4l2_fract
 	tpf_min     = {.numerator = 1,		.denominator = FPS_MAX},
 	tpf_max     = {.numerator = 1,	        .denominator = FPS_MIN},
 	tpf_default = {.numerator = 1000,	.denominator = 30000};
+
+/* Container for MMAL and VB2 buffers*/
+struct vb2_mmal_buffer {
+	struct vb2_v4l2_buffer	vb;
+	struct mmal_buffer	mmal;
+};
 
 /* video formats */
 static struct mmal_fmt formats[] = {
@@ -275,14 +281,15 @@ static int buffer_init(struct vb2_buffer *vb)
 {
 	struct bm2835_mmal_dev *dev = vb2_get_drv_priv(vb->vb2_queue);
 	struct vb2_v4l2_buffer *vb2 = to_vb2_v4l2_buffer(vb);
-	struct mmal_buffer *buf = container_of(vb2, struct mmal_buffer, vb);
+	struct vb2_mmal_buffer *buf =
+				container_of(vb2, struct vb2_mmal_buffer, vb);
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p, vb %p\n",
 		 __func__, dev, vb);
-	buf->buffer = vb2_plane_vaddr(&buf->vb.vb2_buf, 0);
-	buf->buffer_size = vb2_plane_size(&buf->vb.vb2_buf, 0);
+	buf->mmal.buffer = vb2_plane_vaddr(&buf->vb.vb2_buf, 0);
+	buf->mmal.buffer_size = vb2_plane_size(&buf->vb.vb2_buf, 0);
 
-	mmal_vchi_buffer_init(dev->instance, buf);
+	mmal_vchi_buffer_init(dev->instance, &buf->mmal);
 
 	return 0;
 }
@@ -291,7 +298,8 @@ static int buffer_prepare(struct vb2_buffer *vb)
 {
 	struct bm2835_mmal_dev *dev = vb2_get_drv_priv(vb->vb2_queue);
 	struct vb2_v4l2_buffer *vb2 = to_vb2_v4l2_buffer(vb);
-	struct mmal_buffer *buf = container_of(vb2, struct mmal_buffer, vb);
+	struct vb2_mmal_buffer *buf =
+				container_of(vb2, struct vb2_mmal_buffer, vb);
 	unsigned long size;
 	int ret;
 
@@ -320,7 +328,7 @@ static int buffer_prepare(struct vb2_buffer *vb)
 	 * Ideally we'd like the struct dma_buf directly, but can't get hold of
 	 * it, so have to accept the fd and work with it.
 	 */
-	if (!buf->dma_buf) {
+	if (!buf->mmal.dma_buf) {
 		int fd;
 
 		ret = vb2_core_expbuf(vb->vb2_queue, &fd,
@@ -329,9 +337,9 @@ static int buffer_prepare(struct vb2_buffer *vb)
 		if (ret)
 			v4l2_err(&dev->v4l2_dev, "%s: Failed to expbuf idx %d, ret %d\n",
 				 __func__, vb->index, ret);
-		buf->dma_buf = dma_buf_get(fd);
+		buf->mmal.dma_buf = dma_buf_get(fd);
 		v4l2_err(&dev->v4l2_dev, "%s: Given dma_buf fd %d, %p\n",
-			 __func__, fd, buf->dma_buf);
+			 __func__, fd, buf->mmal.dma_buf);
 		/*
 		 * Release the fd (and the associated refcount) as we now have
 		 * a ref to the dma_buf
@@ -348,16 +356,17 @@ static void buffer_cleanup(struct vb2_buffer *vb)
 {
 	struct bm2835_mmal_dev *dev = vb2_get_drv_priv(vb->vb2_queue);
 	struct vb2_v4l2_buffer *vb2 = to_vb2_v4l2_buffer(vb);
-	struct mmal_buffer *buf = container_of(vb2, struct mmal_buffer, vb);
+	struct vb2_mmal_buffer *buf =
+				container_of(vb2, struct vb2_mmal_buffer, vb);
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p, vb %p\n",
 		 __func__, dev, vb);
 
-	mmal_vchi_buffer_cleanup(buf);
+	mmal_vchi_buffer_cleanup(&buf->mmal);
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
-	if (buf->dma_buf)
-		dma_buf_put(buf->dma_buf);
+	if (buf->mmal.dma_buf)
+		dma_buf_put(buf->mmal.dma_buf);
 #endif
 }
 
@@ -370,14 +379,16 @@ static inline bool is_capturing(struct bm2835_mmal_dev *dev)
 static void buffer_cb(struct vchiq_mmal_instance *instance,
 		      struct vchiq_mmal_port *port,
 		      int status,
-		      struct mmal_buffer *buf,
-		      unsigned long length, u32 mmal_flags, s64 dts, s64 pts)
+		      struct mmal_buffer *mmal_buf)
 {
 	struct bm2835_mmal_dev *dev = port->cb_ctx;
+	struct vb2_mmal_buffer *buf =
+			container_of(mmal_buf, struct vb2_mmal_buffer, mmal);
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 		 "%s: status:%d, buf:%p, length:%lu, flags %u, pts %lld\n",
-		 __func__, status, buf, length, mmal_flags, pts);
+		 __func__, status, buf, mmal_buf->length, mmal_buf->mmal_flags,
+		 mmal_buf->pts);
 
 	if (status != 0) {
 		/* error in transfer */
@@ -388,7 +399,7 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		return;
 	}
 
-	if (length == 0) {
+	if (mmal_buf->length == 0) {
 		/* stream ended */
 		if (buf) {
 			/* this should only ever happen if the port is
@@ -426,15 +437,15 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Buffer time set as current time - %lld",
 		 buf->vb.vb2_buf.timestamp);
-	} else if (pts != 0) {
-		s64 runtime_us = pts -
+	} else if (mmal_buf->pts != 0) {
+		s64 runtime_us = mmal_buf->pts -
 		    dev->capture.vc_start_timestamp;
 		buf->vb.vb2_buf.timestamp = (runtime_us * NSEC_PER_USEC) +
 		    dev->capture.kernel_start_timestamp;
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Buffer time set as converted timestamp - %llu = (pts [%lld usec] - vc start time [%llu usec]) + kernel start time [%llu nsec]\n",
 			 buf->vb.vb2_buf.timestamp,
-			 pts, dev->capture.vc_start_timestamp,
+			 mmal_buf->pts, dev->capture.vc_start_timestamp,
 			 dev->capture.kernel_start_timestamp);
 	} else {
 		if (dev->capture.last_timestamp) {
@@ -452,8 +463,8 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 	}
 	dev->capture.last_timestamp = buf->vb.vb2_buf.timestamp;
 
-	vb2_set_plane_payload(&buf->vb.vb2_buf, 0, length);
-	if (mmal_flags & MMAL_BUFFER_HEADER_FLAG_KEYFRAME)
+	vb2_set_plane_payload(&buf->vb.vb2_buf, 0, mmal_buf->length);
+	if (mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_KEYFRAME)
 		buf->vb.flags |= V4L2_BUF_FLAG_KEYFRAME;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
@@ -461,7 +472,7 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		dev->capture.last_timestamp);
 	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 
-	if (mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS &&
+	if (mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS &&
 	    is_capturing(dev)) {
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Grab another frame as buffer has EOS");
@@ -544,14 +555,16 @@ static void buffer_queue(struct vb2_buffer *vb)
 {
 	struct bm2835_mmal_dev *dev = vb2_get_drv_priv(vb->vb2_queue);
 	struct vb2_v4l2_buffer *vb2 = to_vb2_v4l2_buffer(vb);
-	struct mmal_buffer *buf = container_of(vb2, struct mmal_buffer, vb);
+	struct vb2_mmal_buffer *buf =
+				container_of(vb2, struct vb2_mmal_buffer, vb);
 	int ret;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 		 "%s: dev:%p buf:%p, idx %u\n", __func__, dev, buf,
 		 vb2->vb2_buf.index);
 
-	ret = vchiq_mmal_submit_buffer(dev->instance, dev->capture.port, buf);
+	ret = vchiq_mmal_submit_buffer(dev->instance, dev->capture.port,
+				       &buf->mmal);
 	if (ret < 0)
 		v4l2_err(&dev->v4l2_dev, "%s: error submitting buffer\n",
 			 __func__);
