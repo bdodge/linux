@@ -456,6 +456,17 @@ static void queue_res_chg_event(struct bcm2835_codec_ctx *ctx)
 	v4l2_event_queue_fh(&ctx->fh, &ev_src_ch);
 }
 
+static void send_eos_event(struct bcm2835_codec_ctx *ctx)
+{
+	static const struct v4l2_event ev = {
+		.type = V4L2_EVENT_EOS,
+	};
+
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "Sending EOS event\n");
+
+	v4l2_event_queue_fh(&ctx->fh, &ev);
+}
+
 static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 			 struct vchiq_mmal_port *port, int status,
 			 struct mmal_buffer *mmal_buf)
@@ -534,15 +545,19 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 		 mmal_buf->length, mmal_buf->mmal_flags, vb2->vb2_buf.index);
 
 	if (mmal_buf->length == 0) {
-		/* stream ended */
-		/* this should only ever happen if the port is
-		 * disabled and there are buffers still queued
-		 */
-		pr_debug("%s: Empty buffer", __func__);
-		vb2_buffer_done(&vb2->vb2_buf, VB2_BUF_STATE_ERROR);
-		if (!port->enabled)
-			complete(&ctx->frame_cmplt);
-		return;
+		/* stream ended, or buffer being returned during disable. */
+		pr_debug("%s: Empty buffer - flags %04x", __func__,
+			 mmal_buf->mmal_flags);
+		if (mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS) {
+			/* EOS packet from the VPU */
+			send_eos_event(ctx);
+			vb2->flags |= V4L2_BUF_FLAG_LAST;
+		} else {
+			vb2_buffer_done(&vb2->vb2_buf, VB2_BUF_STATE_ERROR);
+			if (!port->enabled)
+				complete(&ctx->frame_cmplt);
+			return;
+		}
 	}
 
 	vb2->vb2_buf.timestamp = mmal_buf->pts;
@@ -574,6 +589,14 @@ static void vb2_to_mmal_buffer(struct m2m_mmal_buffer *buf,
 		buf->mmal.mmal_flags |= MMAL_BUFFER_HEADER_FLAG_KEYFRAME;
 
 	buf->mmal.length = vb2->vb2_buf.planes[0].bytesused;
+	/*
+	 * Minor ambiguity in the V4L2 spec as to whether passing in a 0 length
+	 * buffer, or one with V4L2_BUF_FLAG_LAST set denotes end of stream.
+	 * Handle either.
+	 */
+	if (!buf->mmal.length || vb2->flags & V4L2_BUF_FLAG_LAST)
+		buf->mmal.mmal_flags |= MMAL_BUFFER_HEADER_FLAG_EOS;
+
 	buf->mmal.pts = vb2->vb2_buf.timestamp;
 	buf->mmal.dts = MMAL_TIME_UNKNOWN;
 }
@@ -1433,7 +1456,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq, struct vb2_queue *ds
 	int ret;
 
 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-	src_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
+	src_vq->io_modes = VB2_MMAP | VB2_DMABUF;
 	src_vq->drv_priv = ctx;
 	src_vq->buf_struct_size = sizeof(struct m2m_mmal_buffer);
 	src_vq->ops = &bcm2835_codec_qops;
@@ -1447,7 +1470,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq, struct vb2_queue *ds
 		return ret;
 
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	dst_vq->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
+	dst_vq->io_modes = VB2_MMAP | VB2_DMABUF;
 	dst_vq->drv_priv = ctx;
 	dst_vq->buf_struct_size = sizeof(struct m2m_mmal_buffer);
 	dst_vq->ops = &bcm2835_codec_qops;

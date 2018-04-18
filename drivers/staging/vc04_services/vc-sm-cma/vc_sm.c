@@ -283,7 +283,7 @@ static void vc_sm_destroy_buffer(struct vc_sm_buffer *buffer)
 }
 
 /*
- * Release a previously acquired buffer.
+ * Release an allocation.
  * All refcounting is done via the dma buf object.
  */
 static void vc_sm_release_resource(struct vc_sm_buffer *buffer, int force)
