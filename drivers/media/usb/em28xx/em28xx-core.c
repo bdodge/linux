@@ -1183,9 +1183,10 @@ int em28xx_resume_extension(struct em28xx *dev)
 	dev_info(&dev->intf->dev, "Resuming extensions\n");
 	mutex_lock(&em28xx_devlist_mutex);
 	list_for_each_entry(ops, &em28xx_extension_devlist, next) {
-		if (ops->resume)
-			ops->resume(dev);
-		if (dev->dev_next != NULL)
+		if (!ops->resume)
+			continue;
+		ops->resume(dev);
+		if (dev->dev_next)
 			ops->resume(dev->dev_next);
 	}
 	mutex_unlock(&em28xx_devlist_mutex);
