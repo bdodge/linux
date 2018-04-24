@@ -1283,6 +1283,8 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 		 * a ref to the dma_buf
 		 */
 		sys_close(fd);
+	} else {
+		ret = 0;
 	}
 #else
 	ret = 0;
