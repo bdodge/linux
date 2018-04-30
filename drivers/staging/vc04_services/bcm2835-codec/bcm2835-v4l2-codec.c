@@ -588,6 +588,15 @@ static void vb2_to_mmal_buffer(struct m2m_mmal_buffer *buf,
 	if (vb2->flags & V4L2_BUF_FLAG_KEYFRAME)
 		buf->mmal.mmal_flags |= MMAL_BUFFER_HEADER_FLAG_KEYFRAME;
 
+	/*
+	 * Adding this means that the data must be framed correctly as one frame
+	 * per buffer. The underlying decoder has no such requirement, but it
+	 * will reduce latency as the bistream parser will be kicked immediately
+	 * to parse the frame, rather than relying on its own heuristics for
+	 * when to wake up.
+	 */
+	buf->mmal.mmal_flags |= MMAL_BUFFER_HEADER_FLAG_FRAME_END;
+
 	buf->mmal.length = vb2->vb2_buf.planes[0].bytesused;
 	/*
 	 * Minor ambiguity in the V4L2 spec as to whether passing in a 0 length
