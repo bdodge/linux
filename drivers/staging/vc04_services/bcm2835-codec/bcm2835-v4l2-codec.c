@@ -192,6 +192,11 @@ struct bcm2835_codec_fmt_list formats[] = {
 	},
 };
 
+struct m2m_mmal_buffer {
+	struct v4l2_m2m_buffer	m2m;
+	struct mmal_buffer	mmal;
+};
+
 /* Per-queue, driver-specific private data */
 struct bcm2835_codec_q_data {
 	/*
@@ -209,16 +214,15 @@ struct bcm2835_codec_q_data {
 	unsigned int		sizeimage;
 	unsigned int		sequence;
 	struct bcm2835_codec_fmt	*fmt;
+
+	/* One extra buffer header so we can send an EOS. */
+	struct m2m_mmal_buffer	eos_buffer;
+	bool			eos_buffer_in_use;	/* debug only */
 };
 
 enum {
 	V4L2_M2M_SRC = 0,
 	V4L2_M2M_DST = 1,
-};
-
-struct m2m_mmal_buffer {
-	struct v4l2_m2m_buffer	m2m;
-	struct mmal_buffer	mmal;
 };
 
 static inline struct bcm2835_codec_fmt_list *get_format_list(bool decode,
@@ -415,6 +419,16 @@ static void ip_buffer_cb(struct vchiq_mmal_instance *instance,
 		 __func__, port, mmal_buf, mmal_buf->length,
 		 mmal_buf->mmal_flags);
 
+	if (buf == &ctx->q_data[V4L2_M2M_SRC].eos_buffer) {
+		/* Do we need to add lcoking to prevent multiple submission of
+		 * the EOS, and therefore handle mutliple return here?
+		 */
+		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: eos buffer returned.\n",
+			 __func__);
+		ctx->q_data[V4L2_M2M_SRC].eos_buffer_in_use = false;
+		return;
+	}
+
 	if (status != 0) {
 		/* error in transfer */
 		if (buf) {
@@ -548,16 +562,17 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 		/* stream ended, or buffer being returned during disable. */
 		pr_debug("%s: Empty buffer - flags %04x", __func__,
 			 mmal_buf->mmal_flags);
-		if (mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS) {
-			/* EOS packet from the VPU */
-			send_eos_event(ctx);
-			vb2->flags |= V4L2_BUF_FLAG_LAST;
-		} else {
+		if (!mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS) {
 			vb2_buffer_done(&vb2->vb2_buf, VB2_BUF_STATE_ERROR);
 			if (!port->enabled)
 				complete(&ctx->frame_cmplt);
 			return;
 		}
+	}
+	if (mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS) {
+		/* EOS packet from the VPU */
+		send_eos_event(ctx);
+		vb2->flags |= V4L2_BUF_FLAG_LAST;
 	}
 
 	vb2->vb2_buf.timestamp = mmal_buf->pts;
@@ -636,8 +651,9 @@ static void device_run(void *priv)
 		ret = vchiq_mmal_submit_buffer(dev->instance,
 					       &ctx->component->input[0],
 					       &src_m2m_buf->mmal);
-		v4l2_err(&ctx->dev->v4l2_dev, "%s: Submitted ip buffer len %u, pts %llu\n",
-				 __func__, src_m2m_buf->mmal.length, src_m2m_buf->mmal.pts);
+		v4l2_err(&ctx->dev->v4l2_dev, "%s: Submitted ip buffer len %lu, pts %llu, flags %04x\n",
+			 __func__, src_m2m_buf->mmal.length,
+			 src_m2m_buf->mmal.pts, src_m2m_buf->mmal.mmal_flags);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed submitting ip buffer\n",
 				 __func__);
@@ -1150,6 +1166,144 @@ static const struct v4l2_ctrl_ops bcm2835_codec_ctrl_ops = {
 	.s_ctrl = bcm2835_codec_s_ctrl,
 };
 
+static int vidioc_try_decoder_cmd(struct file *file, void *priv,
+				  struct v4l2_decoder_cmd *cmd)
+{
+	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+
+	if (!ctx->dev->decode)
+		return -EINVAL;
+
+	switch (cmd->cmd) {
+	case V4L2_DEC_CMD_STOP:
+	case V4L2_DEC_CMD_START:
+		if (cmd->flags != 0) {
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: DEC cmd->flags=%u",
+				 __func__, cmd->flags);
+			return -EINVAL;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int vidioc_decoder_cmd(struct file *file, void *priv,
+			      struct v4l2_decoder_cmd *cmd)
+{
+	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+	struct bcm2835_codec_q_data *q_data = &ctx->q_data[V4L2_M2M_SRC];
+	int ret;
+
+	v4l2_err(&ctx->dev->v4l2_dev, "%s, cmd %u", __func__,
+		 cmd->cmd);
+	ret = vidioc_try_decoder_cmd(file, priv, cmd);
+	if (ret)
+		return ret;
+
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: decoder cmd=%u\n",
+		 __func__, cmd->cmd);
+	switch (cmd->cmd) {
+	case V4L2_DEC_CMD_STOP:
+		if (q_data->eos_buffer_in_use)
+			v4l2_err(&ctx->dev->v4l2_dev, "EOS buffers already in use\n");
+		q_data->eos_buffer_in_use = true;
+
+		q_data->eos_buffer.mmal.buffer_size = 0;
+		q_data->eos_buffer.mmal.length = 0;
+		q_data->eos_buffer.mmal.mmal_flags =
+						MMAL_BUFFER_HEADER_FLAG_EOS;
+		q_data->eos_buffer.mmal.pts = 0;
+		q_data->eos_buffer.mmal.dts = 0;
+
+		ret = vchiq_mmal_submit_buffer(ctx->dev->instance,
+					       &ctx->component->input[0],
+					       &q_data->eos_buffer.mmal);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev,
+				 "%s: EOS buffer submit failed %d\n",
+				 __func__, ret);
+
+		break;
+
+	case V4L2_DEC_CMD_START:
+		/* Do we need to do anything here? */
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int vidioc_try_encoder_cmd(struct file *file, void *priv,
+				  struct v4l2_encoder_cmd *cmd)
+{
+	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+
+	if (ctx->dev->decode)
+		return -EINVAL;
+
+	switch (cmd->cmd) {
+	case V4L2_ENC_CMD_STOP:
+		break;
+
+	case V4L2_ENC_CMD_START:
+		/* Do we need to do anything here? */
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int vidioc_encoder_cmd(struct file *file, void *priv,
+			      struct v4l2_encoder_cmd *cmd)
+{
+	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+	struct bcm2835_codec_q_data *q_data = &ctx->q_data[V4L2_M2M_SRC];
+	int ret;
+
+	ret = vidioc_try_encoder_cmd(file, priv, cmd);
+	if (ret)
+		return ret;
+
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: decoder cmd=%u", __func__,
+		 cmd->cmd);
+	switch (cmd->cmd) {
+	case V4L2_ENC_CMD_STOP:
+		if (q_data->eos_buffer_in_use)
+			v4l2_err(&ctx->dev->v4l2_dev, "EOS buffers already in use\n");
+		q_data->eos_buffer_in_use = true;
+
+		q_data->eos_buffer.mmal.buffer_size = 0;
+		q_data->eos_buffer.mmal.length = 0;
+		q_data->eos_buffer.mmal.mmal_flags =
+						MMAL_BUFFER_HEADER_FLAG_EOS;
+		q_data->eos_buffer.mmal.pts = 0;
+		q_data->eos_buffer.mmal.dts = 0;
+
+		ret = vchiq_mmal_submit_buffer(ctx->dev->instance,
+					       &ctx->component->input[0],
+					       &q_data->eos_buffer.mmal);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev,
+				 "%s: EOS buffer submit failed %d\n",
+				 __func__, ret);
+
+		break;
+	case V4L2_ENC_CMD_START:
+		/* Do we need to do anything here? */
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 static const struct v4l2_ioctl_ops bcm2835_codec_ioctl_ops = {
 	.vidioc_querycap	= vidioc_querycap,
@@ -1180,6 +1334,11 @@ static const struct v4l2_ioctl_ops bcm2835_codec_ioctl_ops = {
 
 	.vidioc_subscribe_event = vidioc_subscribe_evt,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
+
+	.vidioc_decoder_cmd = vidioc_decoder_cmd,
+	.vidioc_try_decoder_cmd = vidioc_try_decoder_cmd,
+	.vidioc_encoder_cmd = vidioc_encoder_cmd,
+	.vidioc_try_encoder_cmd = vidioc_try_encoder_cmd,
 };
 
 /*
@@ -1210,7 +1369,8 @@ static int bcm2835_codec_queue_setup(struct vb2_queue *vq,
 
 	if (*nbuffers < port->minimum_buffer.num)
 		*nbuffers = port->minimum_buffer.num;
-	port->current_buffer.num = *nbuffers;
+	/* Add one buffer to take an EOS */
+	port->current_buffer.num = *nbuffers + 1;
 
 	return 0;
 }
@@ -1266,14 +1426,9 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
 	/*
-	 * Two niggles:
-	 * 1 - We want to do this at init, but vb2_core_expbuf checks that the
+	 * We want to do this at init, but vb2_core_expbuf checks that the
 	 * index < q->num_buffers, and q->num_buffers only gets updated once
 	 * all the buffers are allocated.
-	 *
-	 * 2 - videobuf2 only exposes dmabufs as an fd via vb2_core_expbuf.
-	 * Ideally we'd like the struct dma_buf directly, but can't get hold of
-	 * it, so have to accept the fd and work with it.
 	 */
 	if (!buf->mmal.dma_buf) {
 		ret = vb2_core_expbuf_dmabuf(vb->vb2_queue,
@@ -1340,6 +1495,16 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q, unsigned count)
 	}
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
+		/*
+		 * Create the EOS buffer.
+		 * We only need the MMAL part, and want to NOT attach a memory
+		 * buffer to it as it should only take flags.
+		 */
+		memset(&q_data->eos_buffer, 0, sizeof(q_data->eos_buffer));
+		mmal_vchi_buffer_init(dev->instance,
+				      &q_data->eos_buffer.mmal);
+		q_data->eos_buffer_in_use = false;
+
 		ctx->component->input[0].cb_ctx = ctx;
 		ret = vchiq_mmal_port_enable(dev->instance,
 					     &ctx->component->input[0],
@@ -1435,6 +1600,10 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling component, ret %d\n",
 				__func__, ret);
 	}
+
+	if (V4L2_TYPE_IS_OUTPUT(q->type))
+		mmal_vchi_buffer_cleanup(
+				&ctx->q_data[V4L2_M2M_SRC].eos_buffer.mmal);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: done\n", __func__);
 }
@@ -1762,6 +1931,13 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 	v4l2_info(&dev->v4l2_dev,
 			"Device registered as /dev/video%d\n", vfd->num);
 
+	if (dev->decode) {
+		v4l2_disable_ioctl(vfd, VIDIOC_ENCODER_CMD);
+		v4l2_disable_ioctl(vfd, VIDIOC_TRY_ENCODER_CMD);
+	} else {
+		v4l2_disable_ioctl(vfd, VIDIOC_DECODER_CMD);
+		v4l2_disable_ioctl(vfd, VIDIOC_TRY_DECODER_CMD);
+	}
 	//setup_timer(&dev->timer, device_isr, (long)dev);
 	platform_set_drvdata(pdev, dev);
 
