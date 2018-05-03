@@ -1579,9 +1579,10 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 		}
 	}
 
-	/* I can't believe I'm having to release the VCSM handle here, but
-	 * otherwise REQBUFS(0) aborts because someone is using the dmabuf
-	 * before giving me a chance to do anything about it.
+	/*
+	 * Release the VCSM handle here as otherwise REQBUFS(0) aborts because
+	 * someone is using the dmabuf before giving the driver a chance to do
+	 * anything about it.
 	 */
 	for (i = 0; i < q->num_buffers; i++) {
 		vb2 = to_vb2_v4l2_buffer(q->bufs[i]);
