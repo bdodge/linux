@@ -350,8 +350,10 @@ static void buffer_cleanup(struct vb2_buffer *vb)
 	mmal_vchi_buffer_cleanup(&buf->mmal);
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
-	if (buf->mmal.dma_buf)
+	if (buf->mmal.dma_buf) {
 		dma_buf_put(buf->mmal.dma_buf);
+		buf->mmal.dma_buf = NULL;
+	}
 #endif
 }
 
@@ -649,8 +651,11 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 /* abort streaming and wait for last buffer */
 static void stop_streaming(struct vb2_queue *vq)
 {
-	int ret;
 	struct bm2835_mmal_dev *dev = vb2_get_drv_priv(vq);
+	struct vb2_v4l2_buffer *vb2;
+	struct vb2_mmal_buffer *buf;
+	int ret;
+	int i;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p\n",
 		 __func__, dev);
@@ -679,6 +684,22 @@ static void stop_streaming(struct vb2_queue *vq)
 	if (ret <= 0)
 		v4l2_err(&dev->v4l2_dev,
 			 "error %d waiting for frame completion\n", ret);
+
+	/*
+	 * Release the VCSM handle here as otherwise REQBUFS(0) aborts because
+	 * someone is using the dmabuf before giving the driver a chance to do
+	 * anything about it.
+	 */
+	for (i = 0; i < vq->num_buffers; i++) {
+		vb2 = to_vb2_v4l2_buffer(vq->bufs[i]);
+		buf = container_of(vb2, struct vb2_mmal_buffer, vb);
+
+		mmal_vchi_buffer_cleanup(&buf->mmal);
+		if (buf->mmal.dma_buf) {
+			dma_buf_put(buf->mmal.dma_buf);
+			buf->mmal.dma_buf = NULL;
+		}
+	}
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 		 "disabling connection\n");
