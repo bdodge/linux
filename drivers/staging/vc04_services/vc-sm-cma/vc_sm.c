@@ -249,6 +249,7 @@ static void vc_sm_add_resource(struct vc_sm_privdata_t *privdata,
 static void vc_sm_clean_up_dmabuf(struct vc_sm_buffer *buffer)
 {
 	/* Handle cleaning up imported dmabufs */
+	mutex_lock(&buffer->lock);
 	if (buffer->sgt) {
 		dma_buf_unmap_attachment(buffer->attach, buffer->sgt,
 					 DMA_BIDIRECTIONAL);
@@ -268,6 +269,7 @@ static void vc_sm_clean_up_dmabuf(struct vc_sm_buffer *buffer)
 		dma_buf_put(buffer->dma_buf);
 		buffer->dma_buf = NULL;
 	}
+	mutex_unlock(&buffer->lock);
 }
 
 static void vc_sm_destroy_buffer(struct vc_sm_buffer *buffer)
