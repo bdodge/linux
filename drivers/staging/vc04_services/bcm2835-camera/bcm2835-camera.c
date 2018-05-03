@@ -319,32 +319,17 @@ static int buffer_prepare(struct vb2_buffer *vb)
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
 	/*
-	 * Two niggles:
-	 * 1 - We want to do this at init, but vb2_core_expbuf checks that the
+	 * We want to do this at init, but vb2_core_expbuf checks that the
 	 * index < q->num_buffers, and q->num_buffers only gets updated once
 	 * all the buffers are allocated.
-	 *
-	 * 2 - videobuf2 only exposes dmabufs as an fd via vb2_core_expbuf.
-	 * Ideally we'd like the struct dma_buf directly, but can't get hold of
-	 * it, so have to accept the fd and work with it.
 	 */
 	if (!buf->mmal.dma_buf) {
-		int fd;
-
-		ret = vb2_core_expbuf(vb->vb2_queue, &fd,
-				      vb->vb2_queue->type, vb->index, 0,
-				      O_CLOEXEC);
+		ret = vb2_core_expbuf_dmabuf(vb->vb2_queue,
+					     vb->vb2_queue->type, vb->index, 0,
+					     O_CLOEXEC, &buf->mmal.dma_buf);
 		if (ret)
 			v4l2_err(&dev->v4l2_dev, "%s: Failed to expbuf idx %d, ret %d\n",
 				 __func__, vb->index, ret);
-		buf->mmal.dma_buf = dma_buf_get(fd);
-		v4l2_err(&dev->v4l2_dev, "%s: Given dma_buf fd %d, %p\n",
-			 __func__, fd, buf->mmal.dma_buf);
-		/*
-		 * Release the fd (and the associated refcount) as we now have
-		 * a ref to the dma_buf
-		 */
-		sys_close(fd);
 	}
 #else
 	ret = 0;
