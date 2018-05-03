@@ -1470,8 +1470,10 @@ static void bcm2835_codec_buffer_cleanup(struct vb2_buffer *vb)
 	mmal_vchi_buffer_cleanup(&buf->mmal);
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
-	if (buf->mmal.dma_buf)
+	if (buf->mmal.dma_buf) {
 		dma_buf_put(buf->mmal.dma_buf);
+		buf->mmal.dma_buf = NULL;
+	}
 #endif
 }
 
@@ -1587,8 +1589,10 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 		buf = container_of(m2m, struct m2m_mmal_buffer, m2m);
 
 		mmal_vchi_buffer_cleanup(&buf->mmal);
-		if (buf->mmal.dma_buf)
+		if (buf->mmal.dma_buf) {
 			dma_buf_put(buf->mmal.dma_buf);
+			buf->mmal.dma_buf = NULL;
+		}
 	}
 
 	/* If both ports disabled, then disable the component */
