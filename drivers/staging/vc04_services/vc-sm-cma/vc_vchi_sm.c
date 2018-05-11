@@ -204,6 +204,9 @@ static int vc_sm_vchi_videocore_io(void *arg)
 			while (!vchi_msg_peek
 			       (instance->vchi_handle[0], (void **)&reply,
 				&reply_len, VCHI_FLAGS_NONE)) {
+				pr_err("%s: received msg id %08x",
+						       __func__,
+						       reply->trans_id);
 				if (reply->trans_id & 0x80000000) {
 					/* Async event or cmd from the VPU */
 					vc_sm_vpu_event(instance, reply, reply_len);

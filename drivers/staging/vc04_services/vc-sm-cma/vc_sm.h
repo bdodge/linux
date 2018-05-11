@@ -104,33 +104,17 @@ enum vc_sm_vpu_mapping_state {
 struct vc_sm_buffer {
 	struct list_head global_buffer_list;	/* Global list of buffers. */
 
-	unsigned long flags;
-	unsigned long private_flags;
 	size_t size;
-	void *priv_virt;
 	struct mutex lock;
-	int kmap_cnt;
-	void *vaddr;
 	struct sg_table *sg_table;
 	struct list_head attachments;
 
 	char name[VC_SM_MAX_NAME_LEN];
-	u32 ref_count;	/* Ref count for this buffer. */
+
+	bool in_use;	/* Kernel is still using this resource */
+
 	enum vc_sm_vpu_mapping_state vpu_state;
-	int vpu_allocated;	/*
-				 * The VPU made this allocation. Release the
-				 * local dma_buf when the VPU releases the
-				 * resource.
-				 */
-
 	u32 vc_handle;	/* VideoCore handle for this buffer */
-
-	pid_t pid;		/* PID owning that resource. */
-	u32 lock_count;	/* Lock count for this resource. */
-
-	void *res_base_mem;	/* Resource base memory address. */
-
-	struct cma *cma_heap;
 
 	/* DMABUF related fields */
 	struct dma_buf *import_dma_buf;
@@ -140,7 +124,6 @@ struct vc_sm_buffer {
 	dma_addr_t dma_addr;
 
 	struct vc_sm_privdata_t *private;
-	bool map;		/* whether to map pages up front */
 };
 
 void vc_sm_buffer_destroy(struct vc_sm_buffer *buffer);
