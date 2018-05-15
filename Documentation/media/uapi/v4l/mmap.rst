@@ -32,7 +32,9 @@ To allocate device buffers applications call the
 :ref:`VIDIOC_REQBUFS` ioctl with the desired number
 of buffers and buffer type, for example ``V4L2_BUF_TYPE_VIDEO_CAPTURE``.
 This ioctl can also be used to change the number of buffers or to free
-the allocated memory, provided none of the buffers are still mapped.
+the allocated memory. The buffers will not be released until the buffers
+are unmapped and any exported dma_buf handles are closed, and this is the
+responsibility of the application.
 
 Before applications can access the buffers they must map them into their
 address space with the :ref:`mmap() <func-mmap>` function. The
