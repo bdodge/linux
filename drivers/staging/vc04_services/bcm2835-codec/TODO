@@ -9,7 +9,7 @@ We should have VCHI create a platform device once it's initialized,
 and have this driver bind to it, so that we automatically load the
 v4l2 module after VCHI loads.
 
-2) Support SELECTION API to define crop region on the image.
+2) Support SELECTION API to define crop region on the image for encode.
 
 Particularly for resolutions that aren't a multiple of the macroblock
 size, the codec will report a resolution that is a multiple of the macroblock

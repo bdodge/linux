@@ -46,14 +46,17 @@ MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.org>");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.0.1");
 
-/* maximum number of components supported */
-#define VCHIQ_MMAL_MAX_COMPONENTS 10
+/*
+ * maximum number of components supported.
+ * This matches the maximum permitted by default on the VPU
+ */
+#define VCHIQ_MMAL_MAX_COMPONENTS 64
 
 /*
- * timeout for synchronous msg responses. Helpful to increase this if stopping
- * in the VPU debugger.
+ * timeout for synchronous msg responses in seconds.
+ * Helpful to increase this if stopping in the VPU debugger.
  */
-#define SYNC_MSG_TIMEOUT	60
+#define SYNC_MSG_TIMEOUT	5
 
 /*#define FULL_MSG_DUMP 1*/
 
