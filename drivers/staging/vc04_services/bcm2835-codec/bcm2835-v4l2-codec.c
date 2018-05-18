@@ -47,7 +47,7 @@ MODULE_VERSION("0.0.1");
 
 static unsigned debug;
 module_param(debug, uint, 0644);
-MODULE_PARM_DESC(debug, "activates debug info");
+MODULE_PARM_DESC(debug, "activates debug info (0-3)");
 
 #define BCM2835_V4L2_CODEC_MODULE_NAME "bcm2835-v4l2-codec"
 
@@ -368,6 +368,12 @@ static inline unsigned int get_sizeimage(int bpl, int height,
 	return (bpl * height * fmt->size_multiplier_x2) >> 1;
 }
 
+static inline unsigned int get_bytesperline(int width,
+					    struct bcm2835_codec_fmt *fmt)
+{
+	return ALIGN((width * fmt->depth) >> 3, fmt->bytesperline_align);
+}
+
 static void setup_mmal_port_format(struct bcm2835_codec_ctx *ctx,
 				   bool decode,
 				   struct bcm2835_codec_q_data *q_data,
@@ -415,7 +421,7 @@ static void ip_buffer_cb(struct vchiq_mmal_instance *instance,
 	struct m2m_mmal_buffer *buf =
 			container_of(mmal_buf, struct m2m_mmal_buffer, mmal);
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: port %p buf %p length %lu, flags %x\n",
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: port %p buf %p length %lu, flags %x\n",
 		 __func__, port, mmal_buf, mmal_buf->length,
 		 mmal_buf->mmal_flags);
 
@@ -443,15 +449,19 @@ static void ip_buffer_cb(struct vchiq_mmal_instance *instance,
 	if (mmal_buf->cmd) {
 		v4l2_err(&ctx->dev->v4l2_dev, "%s: Not expecting cmd msgs on ip callback - %08x\n",
 			 __func__, mmal_buf->cmd);
+		/*
+		 * CHECKME: Should we return here. The buffer shouldn't have a
+		 * message context or vb2 buf associated.
+		 */
 	}
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: no error. Return buffer %p\n",
+	v4l2_dbg(3, debug, &ctx->dev->v4l2_dev, "%s: no error. Return buffer %p\n",
 		 __func__, &buf->m2m.vb.vb2_buf);
 	vb2_buffer_done(&buf->m2m.vb.vb2_buf, VB2_BUF_STATE_DONE);
 
 	ctx->num_ip_buffers++;
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: done %d input buffers\n", __func__,
-			ctx->num_ip_buffers);
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: done %d input buffers\n",
+		 __func__, ctx->num_ip_buffers);
 
 	if (!port->enabled)
 		complete(&ctx->frame_cmplt);
@@ -464,8 +474,6 @@ static void queue_res_chg_event(struct bcm2835_codec_ctx *ctx)
 		.u.src_change.changes =
 		V4L2_EVENT_SRC_CH_RESOLUTION,
 	};
-
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "resolution_changed\n");
 
 	v4l2_event_queue_fh(&ctx->fh, &ev_src_ch);
 }
@@ -481,6 +489,60 @@ static void send_eos_event(struct bcm2835_codec_ctx *ctx)
 	v4l2_event_queue_fh(&ctx->fh, &ev);
 }
 
+static void color_mmal2v4l(struct bcm2835_codec_ctx *ctx, u32 mmal_color_space)
+{
+	switch (mmal_color_space) {
+	case MMAL_COLOR_SPACE_ITUR_BT601:
+		ctx->colorspace = V4L2_COLORSPACE_REC709;
+		ctx->xfer_func = V4L2_XFER_FUNC_709;
+		ctx->ycbcr_enc = V4L2_YCBCR_ENC_601;
+		ctx->quant = V4L2_QUANTIZATION_LIM_RANGE;
+		break;
+
+	case MMAL_COLOR_SPACE_ITUR_BT709:
+		ctx->colorspace = V4L2_COLORSPACE_REC709;
+		ctx->xfer_func = V4L2_XFER_FUNC_709;
+		ctx->ycbcr_enc = V4L2_YCBCR_ENC_709;
+		ctx->quant = V4L2_QUANTIZATION_LIM_RANGE;
+		break;
+	}
+}
+
+static void handle_fmt_changed(struct bcm2835_codec_ctx *ctx,
+			       struct mmal_buffer *mmal_buf)
+{
+	struct bcm2835_codec_q_data *q_data;
+	struct mmal_msg_event_format_changed *format =
+		(struct mmal_msg_event_format_changed *)mmal_buf->buffer;
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Format changed: buff size min %u, rec %u, buff num min %u, rec %u\n",
+		 __func__,
+		 format->buffer_size_min,
+		 format->buffer_size_recommended,
+		 format->buffer_num_min,
+		 format->buffer_num_recommended
+		);
+	if (format->format.type != MMAL_ES_TYPE_VIDEO) {
+		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Format changed but not video %u\n",
+			 __func__, format->format.type);
+		return;
+	}
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Format changed to %ux%u, crop %ux%u, colourspace %08X\n",
+		 __func__, format->es.video.width, format->es.video.height,
+		 format->es.video.crop.width, format->es.video.crop.height,
+		 format->es.video.color_space);
+
+	q_data = get_q_data(ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+	q_data->crop_width = format->es.video.crop.width;
+	q_data->crop_height = format->es.video.crop.height;
+	q_data->bytesperline = format->es.video.crop.width;
+	q_data->height = format->es.video.height;
+	q_data->sizeimage = format->buffer_size_min;
+	if (format->es.video.color_space)
+		color_mmal2v4l(ctx, format->es.video.color_space);
+
+	queue_res_chg_event(ctx);
+}
+
 static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 			 struct vchiq_mmal_port *port, int status,
 			 struct mmal_buffer *mmal_buf)
@@ -489,10 +551,10 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 	struct m2m_mmal_buffer *buf;
 	struct vb2_v4l2_buffer *vb2;
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev,
 		 "%s: status:%d, buf:%p, length:%lu, flags %u, pts %lld\n",
-		 __func__, status, mmal_buf, mmal_buf->length, mmal_buf->mmal_flags,
-		 mmal_buf->pts);
+		 __func__, status, mmal_buf, mmal_buf->length,
+		 mmal_buf->mmal_flags, mmal_buf->pts);
 
 	if (status != 0) {
 		/* error in transfer */
@@ -504,44 +566,10 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 	}
 
 	if (mmal_buf->cmd) {
-		v4l2_err(&ctx->dev->v4l2_dev, "%s: event on output callback - %08x\n",
-		 __func__, mmal_buf->cmd);
 		switch (mmal_buf->cmd) {
 		case MMAL_EVENT_FORMAT_CHANGED: //MMAL_FOURCC('E', 'F', 'C', 'H'):
 		{
-			struct bcm2835_codec_q_data *q_data;
-			struct mmal_msg_event_format_changed *format =
-				(struct mmal_msg_event_format_changed *)mmal_buf->buffer;
-			v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Format changed: buff size min %u, rec %u, buff num min %u, rec %u\n",
-				 __func__,
-				 format->buffer_size_min,
-				 format->buffer_size_recommended,
-				 format->buffer_num_min,
-				 format->buffer_num_recommended
-				);
-			if (format->format.type != MMAL_ES_TYPE_VIDEO) {
-				v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Format changed but not video %u\n",
-					 __func__, format->format.type);
-				return;
-			}
-			v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Format changed is video %u\n",
-				__func__, format->format.type);
-			v4l2_err(&ctx->dev->v4l2_dev, "%s: Format changed to %ux%u, crop %ux%u, colourspace %08X\n",
-				 __func__, format->es.video.width,
-				 format->es.video.height,
-				 format->es.video.crop.width,
-				 format->es.video.crop.height,
-				 format->es.video.color_space);
-
-			q_data = get_q_data(ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-			q_data->crop_width = format->es.video.crop.width;
-			q_data->crop_height = format->es.video.crop.height;
-			q_data->bytesperline = format->es.video.crop.width;
-			q_data->height = format->es.video.height;
-			q_data->sizeimage = format->buffer_size_min;
-			ctx->colorspace = format->es.video.color_space;
-
-			queue_res_chg_event(ctx);
+			handle_fmt_changed(ctx, mmal_buf);
 			break;
 		}
 		default:
@@ -555,13 +583,14 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 	buf = container_of(mmal_buf, struct m2m_mmal_buffer, mmal);
 	vb2 = &buf->m2m.vb;
 
-	v4l2_err(&ctx->dev->v4l2_dev, "%s: length %lu, flags %x, idx %u\n", __func__,
-		 mmal_buf->length, mmal_buf->mmal_flags, vb2->vb2_buf.index);
+	v4l2_dbg(3, debug, &ctx->dev->v4l2_dev, "%s: length %lu, flags %x, idx %u\n",
+		 __func__, mmal_buf->length, mmal_buf->mmal_flags,
+		 vb2->vb2_buf.index);
 
 	if (mmal_buf->length == 0) {
 		/* stream ended, or buffer being returned during disable. */
-		pr_debug("%s: Empty buffer - flags %04x", __func__,
-			 mmal_buf->mmal_flags);
+		v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: Empty buffer - flags %04x",
+			 __func__, mmal_buf->mmal_flags);
 		if (!mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS) {
 			vb2_buffer_done(&vb2->vb2_buf, VB2_BUF_STATE_ERROR);
 			if (!port->enabled)
@@ -584,8 +613,8 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 	vb2_buffer_done(&vb2->vb2_buf, VB2_BUF_STATE_DONE);
 	ctx->num_op_buffers++;
 
-	v4l2_err(&ctx->dev->v4l2_dev, "%s: done %d output buffers\n", __func__,
-			ctx->num_op_buffers);
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: done %d output buffers\n",
+		 __func__, ctx->num_op_buffers);
 
 	if (!port->enabled)
 		complete(&ctx->frame_cmplt);
@@ -640,7 +669,7 @@ static void device_run(void *priv)
 	struct v4l2_m2m_buffer *m2m;
 	int ret;
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: off we go\n", __func__);
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: off we go\n", __func__);
 
 	src_buf = v4l2_m2m_buf_remove(&ctx->fh.m2m_ctx->out_q_ctx);
 	if (src_buf) {
@@ -651,7 +680,7 @@ static void device_run(void *priv)
 		ret = vchiq_mmal_submit_buffer(dev->instance,
 					       &ctx->component->input[0],
 					       &src_m2m_buf->mmal);
-		v4l2_err(&ctx->dev->v4l2_dev, "%s: Submitted ip buffer len %lu, pts %llu, flags %04x\n",
+		v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: Submitted ip buffer len %lu, pts %llu, flags %04x\n",
 			 __func__, src_m2m_buf->mmal.length,
 			 src_m2m_buf->mmal.pts, src_m2m_buf->mmal.mmal_flags);
 		if (ret)
@@ -673,7 +702,7 @@ static void device_run(void *priv)
 				 __func__);
 	}
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Submitted src %p, dst %p\n",
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: Submitted src %p, dst %p\n",
 		 __func__, src_m2m_buf, dst_m2m_buf);
 
 	/* Complete the job here. */
@@ -794,9 +823,8 @@ static int vidioc_try_fmt(struct v4l2_format *f, struct bcm2835_codec_fmt *fmt)
 		 */
 		f->fmt.pix.height = ALIGN(f->fmt.pix.height, 16);
 
-		f->fmt.pix.bytesperline =
-				ALIGN((f->fmt.pix.width * fmt->depth) >> 3,
-				      fmt->bytesperline_align);
+		f->fmt.pix.bytesperline = get_bytesperline(f->fmt.pix.width,
+							   fmt);
 		f->fmt.pix.sizeimage = get_sizeimage(f->fmt.pix.bytesperline,
 						     f->fmt.pix.height,
 						     fmt);
@@ -806,9 +834,6 @@ static int vidioc_try_fmt(struct v4l2_format *f, struct bcm2835_codec_fmt *fmt)
 	}
 
 	f->fmt.pix.field = V4L2_FIELD_NONE;
-	pr_err("%s: fmt %08x, size %dx%d, bpl %d, size %d\n", __func__,
-	       f->fmt.pix.pixelformat, f->fmt.pix.width, f->fmt.pix.height,
-	       f->fmt.pix.bytesperline, f->fmt.pix.sizeimage);
 
 	return 0;
 }
@@ -889,6 +914,22 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 	if (!q_data->selection_set)
 		q_data->crop_height = requested_height;
 
+	/*
+	 * Required by v4l2-compliance that we copy the output queue colour
+	 * parameters to the capture port.
+	 * It's pretty meaningless for the decoder, and should be overwritten
+	 * when the codec has parsed the stream headers.
+	 * For the encoder it ought to be passed to the codec so that it's
+	 * encoded in the bitstream, but it hardly applies to the encoded
+	 * capture (encoded) stream.
+	 */
+	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
+		ctx->colorspace = f->fmt.pix.colorspace;
+		ctx->xfer_func = f->fmt.pix.xfer_func;
+		ctx->ycbcr_enc = f->fmt.pix.ycbcr_enc;
+		ctx->quant = f->fmt.pix.quantization;
+	}
+
 	/* All parameters should have been set correctly by try_fmt */
 	q_data->bytesperline = f->fmt.pix.bytesperline;
 	q_data->sizeimage = f->fmt.pix.sizeimage;
@@ -923,16 +964,12 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 						&ctx->q_data[V4L2_M2M_DST];
 		struct vchiq_mmal_port *port_dst = &ctx->component->output[0];
 
-		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Copying input res of %ux%u to output\n",
-			q_data->crop_width, q_data->crop_height);
-
 		q_data_dst->crop_width = q_data->crop_width;
 		q_data_dst->crop_height = q_data->crop_height;
 		q_data_dst->height = ALIGN(q_data->crop_height, 16);
 
 		q_data_dst->bytesperline =
-			ALIGN((f->fmt.pix.width * q_data_dst->fmt->depth) >> 3,
-			      q_data_dst->fmt->bytesperline_align);
+			get_bytesperline(f->fmt.pix.width, q_data_dst->fmt);
 		q_data_dst->sizeimage = get_sizeimage(q_data_dst->bytesperline,
 						      q_data_dst->height,
 						      q_data_dst->fmt);
@@ -1033,7 +1070,7 @@ static int vidioc_s_selection(struct file *file, void *priv,
 	struct bcm2835_codec_ctx *ctx = file2ctx(file);
 	struct bcm2835_codec_q_data *q_data = NULL;
 
-	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: ctx %p, type %d, q_data %p, target %d, rect x/y %d/%d, w/h %ux%u\n",
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: ctx %p, type %d, q_data %p, target %d, rect x/y %d/%d, w/h %ux%u\n",
 		 __func__, ctx, s->type, q_data, s->target, s->r.left, s->r.top,
 		 s->r.width, s->r.height);
 
@@ -1098,8 +1135,6 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_MPEG_VIDEO_BITRATE:
-		v4l2_err(&ctx->dev->v4l2_dev, "Setting bitrate to %d\n",
-			 ctrl->val);
 		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
 						    &ctx->component->output[0],
 						    MMAL_PARAMETER_VIDEO_BIT_RATE,
@@ -1110,9 +1145,6 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
 
 	case V4L2_CID_MPEG_VIDEO_BITRATE_MODE: {
 		u32 bitrate_mode;
-
-		v4l2_err(&ctx->dev->v4l2_dev, "Setting bitrate mode to %d\n",
-			 ctrl->val);
 
 		switch (ctrl->val) {
 		default:
@@ -1132,8 +1164,6 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	}
 	case V4L2_CID_MPEG_VIDEO_REPEAT_SEQ_HEADER:
-		v4l2_err(&ctx->dev->v4l2_dev, "Setting repeat seq header to %d\n",
-			 ctrl->val);
 		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
 						    &ctx->component->output[0],
 						    MMAL_PARAMETER_VIDEO_ENCODE_INLINE_HEADER,
@@ -1142,8 +1172,6 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 
 	case V4L2_CID_MPEG_VIDEO_H264_I_PERIOD:
-		v4l2_err(&ctx->dev->v4l2_dev, "Setting intra-I period to %d\n",
-			 ctrl->val);
 		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
 						    &ctx->component->output[0],
 						    MMAL_PARAMETER_INTRAPERIOD,
@@ -1176,12 +1204,13 @@ static int vidioc_try_decoder_cmd(struct file *file, void *priv,
 
 	switch (cmd->cmd) {
 	case V4L2_DEC_CMD_STOP:
-	case V4L2_DEC_CMD_START:
-		if (cmd->flags != 0) {
-			v4l2_err(&ctx->dev->v4l2_dev, "%s: DEC cmd->flags=%u",
+		if (cmd->flags & V4L2_DEC_CMD_STOP_TO_BLACK) {
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: DEC cmd->flags=%u stop to black not supported",
 				 __func__, cmd->flags);
 			return -EINVAL;
 		}
+		break;
+	case V4L2_DEC_CMD_START:
 		break;
 	default:
 		return -EINVAL;
@@ -1196,14 +1225,12 @@ static int vidioc_decoder_cmd(struct file *file, void *priv,
 	struct bcm2835_codec_q_data *q_data = &ctx->q_data[V4L2_M2M_SRC];
 	int ret;
 
-	v4l2_err(&ctx->dev->v4l2_dev, "%s, cmd %u", __func__,
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s, cmd %u", __func__,
 		 cmd->cmd);
 	ret = vidioc_try_decoder_cmd(file, priv, cmd);
 	if (ret)
 		return ret;
 
-	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: decoder cmd=%u\n",
-		 __func__, cmd->cmd);
 	switch (cmd->cmd) {
 	case V4L2_DEC_CMD_STOP:
 		if (q_data->eos_buffer_in_use)
@@ -1266,12 +1293,12 @@ static int vidioc_encoder_cmd(struct file *file, void *priv,
 	struct bcm2835_codec_q_data *q_data = &ctx->q_data[V4L2_M2M_SRC];
 	int ret;
 
+	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s, cmd %u", __func__,
+		 cmd->cmd);
 	ret = vidioc_try_encoder_cmd(file, priv, cmd);
 	if (ret)
 		return ret;
 
-	v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: decoder cmd=%u", __func__,
-		 cmd->cmd);
 	switch (cmd->cmd) {
 	case V4L2_ENC_CMD_STOP:
 		if (q_data->eos_buffer_in_use)
@@ -1401,7 +1428,8 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 	struct m2m_mmal_buffer *buf = container_of(m2m, struct m2m_mmal_buffer, m2m);
 	int ret;
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: type: %d ptr %p\n", __func__, vb->vb2_queue->type, vb);
+	v4l2_dbg(3, debug, &ctx->dev->v4l2_dev, "%s: type: %d ptr %p\n",
+		 __func__, vb->vb2_queue->type, vb);
 
 	q_data = get_q_data(ctx, vb->vb2_queue->type);
 	if (V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type)) {
@@ -1452,8 +1480,9 @@ static void bcm2835_codec_buf_queue(struct vb2_buffer *vb)
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct bcm2835_codec_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: type: %d ptr %p vbuf->flags %u, seq %u, bytesused %u\n",
-		__func__, vb->vb2_queue->type, vb, vbuf->flags, vbuf->sequence, vb->planes[0].bytesused);
+	v4l2_dbg(3, debug, &ctx->dev->v4l2_dev, "%s: type: %d ptr %p vbuf->flags %u, seq %u, bytesused %u\n",
+		 __func__, vb->vb2_queue->type, vb, vbuf->flags, vbuf->sequence,
+		 vb->planes[0].bytesused);
 	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vbuf);
 }
 
@@ -1672,10 +1701,12 @@ static int bcm2835_codec_open(struct file *file)
 
 	v4l2_err(&dev->v4l2_dev, "Creating instance for %s\n",
 		dev->decode ? "decode" : "encode");
+	v4l2_err(&dev->v4l2_dev, "%s: waiting for mutex\n", __func__);
 	if (mutex_lock_interruptible(&dev->dev_mutex)) {
 		v4l2_err(&dev->v4l2_dev, "Mutex fail\n");
 		return -ERESTARTSYS;
 	}
+	v4l2_err(&dev->v4l2_dev, "%s: obtained mutex\n", __func__);
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
 		rc = -ENOMEM;
@@ -1686,8 +1717,12 @@ static int bcm2835_codec_open(struct file *file)
 	rc = vchiq_mmal_component_init(dev->instance, dev->decode ?
 					"ril.video_decode" : "ril.video_encode",
 					&ctx->component);
-	if (rc < 0)
-		return -EINVAL;
+	if (rc < 0) {
+		v4l2_err(&dev->v4l2_dev, "%s: failed to create component for %s\n",
+			 __func__, dev->decode ? "decode" : "encode");
+		rc = -ENOMEM;
+		goto open_unlock;
+	}
 
 #if defined(CONFIG_BCM_VC_SM_CMA)
 	vchiq_mmal_port_parameter_set(
@@ -1704,25 +1739,34 @@ static int bcm2835_codec_open(struct file *file)
 	ctx->q_data[V4L2_M2M_SRC].fmt = get_default_format(dev->decode, false);
 	ctx->q_data[V4L2_M2M_DST].fmt = get_default_format(dev->decode, true);
 	if (dev->decode) {
-		ctx->q_data[V4L2_M2M_SRC].crop_width = 0;
-		ctx->q_data[V4L2_M2M_SRC].crop_height = 0;
-		ctx->q_data[V4L2_M2M_SRC].height = 0;
+		/*
+		 * Input width and height are irrelevant as they will be defined
+		 * by the bitstream not the format. Required by V4L2 though.
+		 */
+		ctx->q_data[V4L2_M2M_SRC].crop_width = DEFAULT_WIDTH;
+		ctx->q_data[V4L2_M2M_SRC].crop_height = DEFAULT_HEIGHT;
+		ctx->q_data[V4L2_M2M_SRC].height = DEFAULT_HEIGHT;
 		ctx->q_data[V4L2_M2M_SRC].bytesperline = 0;
 		ctx->q_data[V4L2_M2M_SRC].sizeimage =
 						DEFAULT_COMPRESSED_BUF_SIZE;
 
 		ctx->q_data[V4L2_M2M_DST].crop_width = DEFAULT_WIDTH;
 		ctx->q_data[V4L2_M2M_DST].crop_height = DEFAULT_HEIGHT;
-		ctx->q_data[V4L2_M2M_DST].bytesperline = DEFAULT_WIDTH;
 		ctx->q_data[V4L2_M2M_DST].height = DEFAULT_HEIGHT;
-		get_sizeimage(ctx->q_data[V4L2_M2M_DST].bytesperline,
-			      ctx->q_data[V4L2_M2M_DST].height,
-			      ctx->q_data[V4L2_M2M_DST].fmt);
+		ctx->q_data[V4L2_M2M_DST].bytesperline =
+				get_bytesperline(DEFAULT_WIDTH,
+						 ctx->q_data[V4L2_M2M_DST].fmt);
+		ctx->q_data[V4L2_M2M_DST].sizeimage =
+			get_sizeimage(ctx->q_data[V4L2_M2M_DST].bytesperline,
+				      ctx->q_data[V4L2_M2M_DST].height,
+				      ctx->q_data[V4L2_M2M_DST].fmt);
 	} else {
 		ctx->q_data[V4L2_M2M_SRC].crop_width = DEFAULT_WIDTH;
 		ctx->q_data[V4L2_M2M_SRC].crop_height = DEFAULT_HEIGHT;
-		ctx->q_data[V4L2_M2M_SRC].bytesperline = DEFAULT_WIDTH;
 		ctx->q_data[V4L2_M2M_SRC].height = DEFAULT_HEIGHT;
+		ctx->q_data[V4L2_M2M_SRC].bytesperline =
+				get_bytesperline(DEFAULT_WIDTH,
+						 ctx->q_data[V4L2_M2M_SRC].fmt);
 		ctx->q_data[V4L2_M2M_SRC].sizeimage =
 			get_sizeimage(ctx->q_data[V4L2_M2M_SRC].bytesperline,
 				      ctx->q_data[V4L2_M2M_SRC].height,
@@ -1925,6 +1969,14 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 	vfd->lock = &dev->dev_mutex;
 	vfd->v4l2_dev = &dev->v4l2_dev;
 
+	if (dev->decode) {
+		v4l2_disable_ioctl(vfd, VIDIOC_ENCODER_CMD);
+		v4l2_disable_ioctl(vfd, VIDIOC_TRY_ENCODER_CMD);
+	} else {
+		v4l2_disable_ioctl(vfd, VIDIOC_DECODER_CMD);
+		v4l2_disable_ioctl(vfd, VIDIOC_TRY_DECODER_CMD);
+	}
+
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "Failed to register video device\n");
@@ -1936,13 +1988,6 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 	v4l2_info(&dev->v4l2_dev,
 			"Device registered as /dev/video%d\n", vfd->num);
 
-	if (dev->decode) {
-		v4l2_disable_ioctl(vfd, VIDIOC_ENCODER_CMD);
-		v4l2_disable_ioctl(vfd, VIDIOC_TRY_ENCODER_CMD);
-	} else {
-		v4l2_disable_ioctl(vfd, VIDIOC_DECODER_CMD);
-		v4l2_disable_ioctl(vfd, VIDIOC_TRY_DECODER_CMD);
-	}
 	//setup_timer(&dev->timer, device_isr, (long)dev);
 	platform_set_drvdata(pdev, dev);
 
