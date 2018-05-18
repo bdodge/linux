@@ -1022,6 +1022,8 @@ static int vidioc_g_selection(struct file *file, void *priv,
 		return -EINVAL;
 
 	q_data = get_q_data(ctx, s->type);
+	if (!q_data)
+		return -EINVAL;
 
 	if (ctx->dev->decode) {
 		switch (s->target) {
@@ -1079,6 +1081,9 @@ static int vidioc_s_selection(struct file *file, void *priv,
 		return -EINVAL;
 
 	q_data = get_q_data(ctx, s->type);
+	if (!q_data)
+		return -EINVAL;
+
 	if (ctx->dev->decode) {
 		switch (s->target) {
 		case V4L2_SEL_TGT_COMPOSE:
@@ -1384,6 +1389,9 @@ static int bcm2835_codec_queue_setup(struct vb2_queue *vq,
 	unsigned int size;
 
 	q_data = get_q_data(ctx, vq->type);
+	if (!q_data)
+		return -EINVAL;
+
 	port = get_port_data(ctx, vq->type);
 
 	size = q_data->sizeimage;
@@ -1776,7 +1784,7 @@ static int bcm2835_codec_open(struct file *file)
 
 		ctx->q_data[V4L2_M2M_DST].crop_width = DEFAULT_WIDTH;
 		ctx->q_data[V4L2_M2M_DST].crop_height = DEFAULT_HEIGHT;
-		ctx->q_data[V4L2_M2M_DST].bytesperline = DEFAULT_WIDTH;
+		ctx->q_data[V4L2_M2M_DST].bytesperline = 0;
 		ctx->q_data[V4L2_M2M_DST].height = DEFAULT_HEIGHT;
 		ctx->q_data[V4L2_M2M_DST].sizeimage =
 						DEFAULT_COMPRESSED_BUF_SIZE;
