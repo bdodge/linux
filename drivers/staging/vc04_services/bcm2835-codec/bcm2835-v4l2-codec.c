@@ -45,7 +45,7 @@ MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.org>");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.0.1");
 
-static unsigned debug;
+static unsigned int debug;
 module_param(debug, uint, 0644);
 MODULE_PARM_DESC(debug, "activates debug info (0-3)");
 
@@ -61,8 +61,8 @@ MODULE_PARM_DESC(debug, "activates debug info (0-3)");
 #define DEFAULT_COMPRESSED_BUF_SIZE	(512 << 10)
 
 /* Flags that indicate a format can be used for capture/output */
-#define MEM2MEM_CAPTURE	(1 << 0)
-#define MEM2MEM_OUTPUT	(1 << 1)
+#define MEM2MEM_CAPTURE		BIT(0)
+#define MEM2MEM_OUTPUT		BIT(1)
 
 #define MEM2MEM_NAME		"bcm2835_codec"
 
@@ -71,10 +71,6 @@ MODULE_PARM_DESC(debug, "activates debug info (0-3)");
 
 /* Default transaction time in msec */
 #define MEM2MEM_DEF_TRANSTIME	400
-
-#define dprintk(dev, fmt, arg...) \
-	v4l2_dbg(1, debug, &dev->v4l2_dev, "%s: " fmt, __func__, ## arg)
-
 
 struct bcm2835_codec_fmt {
 	u32	fourcc;
@@ -228,14 +224,12 @@ enum {
 static inline struct bcm2835_codec_fmt_list *get_format_list(bool decode,
 							     bool capture)
 {
-	return 	decode ^ capture ? &formats[ENCODED_LIST] : &formats[RAW_LIST];
-
+	return decode ^ capture ? &formats[ENCODED_LIST] : &formats[RAW_LIST];
 }
 
 static struct bcm2835_codec_fmt *get_default_format(bool decode, bool capture)
 {
 	return &get_format_list(decode, capture)->list[0];
-
 }
 
 static struct bcm2835_codec_fmt *find_format(struct v4l2_format *f, bool decode,
@@ -267,6 +261,7 @@ struct bcm2835_codec_dev {
 	/* v4l2 devices */
 	struct v4l2_device	v4l2_dev;
 	struct video_device	vfd;
+	/* mutex for the v4l2 device */
 	struct mutex		dev_mutex;
 	atomic_t		num_inst;
 
@@ -276,7 +271,6 @@ struct bcm2835_codec_dev {
 
 	struct v4l2_m2m_dev	*m2m_dev;
 };
-
 
 struct bcm2835_codec_ctx {
 	struct v4l2_fh		fh;
@@ -316,7 +310,9 @@ static struct bcm2835_codec_q_data *get_q_data(struct bcm2835_codec_ctx *ctx,
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 		return &ctx->q_data[V4L2_M2M_DST];
 	default:
-		BUG();
+		v4l2_err(&ctx->dev->v4l2_dev, "%s: Invalid queue type %u\n",
+			 __func__, type);
+		break;
 	}
 	return NULL;
 }
@@ -330,7 +326,9 @@ static struct vchiq_mmal_port *get_port_data(struct bcm2835_codec_ctx *ctx,
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 		return &ctx->component->output[0];
 	default:
-		BUG();
+		v4l2_err(&ctx->dev->v4l2_dev, "%s: Invalid queue type %u\n",
+			 __func__, type);
+		break;
 	}
 	return NULL;
 }
@@ -435,7 +433,7 @@ static void ip_buffer_cb(struct vchiq_mmal_instance *instance,
 		return;
 	}
 
-	if (status != 0) {
+	if (status) {
 		/* error in transfer */
 		if (buf) {
 			/* there was a buffer with the error so return it */
@@ -556,7 +554,7 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 		 __func__, status, mmal_buf, mmal_buf->length,
 		 mmal_buf->mmal_flags, mmal_buf->pts);
 
-	if (status != 0) {
+	if (status) {
 		/* error in transfer */
 		if (vb2) {
 			/* there was a buffer with the error so return it */
@@ -567,14 +565,14 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 
 	if (mmal_buf->cmd) {
 		switch (mmal_buf->cmd) {
-		case MMAL_EVENT_FORMAT_CHANGED: //MMAL_FOURCC('E', 'F', 'C', 'H'):
+		case MMAL_EVENT_FORMAT_CHANGED:
 		{
 			handle_fmt_changed(ctx, mmal_buf);
 			break;
 		}
 		default:
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Unexpected event on output callback - %08x\n",
-			 __func__, mmal_buf->cmd);
+				 __func__, mmal_buf->cmd);
 			break;
 		}
 		return;
@@ -717,8 +715,8 @@ static int vidioc_querycap(struct file *file, void *priv,
 {
 	strncpy(cap->driver, MEM2MEM_NAME, sizeof(cap->driver) - 1);
 	strncpy(cap->card, MEM2MEM_NAME, sizeof(cap->card) - 1);
-	snprintf(cap->bus_info, sizeof(cap->bus_info),
-			"platform:%s", MEM2MEM_NAME);
+	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s",
+		 MEM2MEM_NAME);
 	cap->device_caps = V4L2_CAP_VIDEO_M2M | V4L2_CAP_STREAMING;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 	return 0;
@@ -751,6 +749,7 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void *priv,
 				   struct v4l2_fmtdesc *f)
 {
 	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+
 	return enum_fmt(f, ctx->dev->decode, true);
 }
 
@@ -758,6 +757,7 @@ static int vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 				   struct v4l2_fmtdesc *f)
 {
 	struct bcm2835_codec_ctx *ctx = file2ctx(file);
+
 	return enum_fmt(f, ctx->dev->decode, false);
 }
 
@@ -887,8 +887,8 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 	int ret;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Setting format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
-		f->type, f->fmt.pix.width, f->fmt.pix.height, f->fmt.pix.pixelformat,
-		f->fmt.pix.sizeimage);
+		 f->type, f->fmt.pix.width, f->fmt.pix.height,
+		 f->fmt.pix.pixelformat, f->fmt.pix.sizeimage);
 
 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, f->type);
 	if (!vq)
@@ -942,13 +942,13 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 
 	if (q_data->sizeimage < port->minimum_buffer.size) {
 		v4l2_err(&ctx->dev->v4l2_dev, "%s: Current buffer size of %u < min buf size %u - driver mismatch to MMAL\n",
-			 __func__, q_data->sizeimage, port->minimum_buffer.size);
+			 __func__, q_data->sizeimage,
+			 port->minimum_buffer.size);
 	}
 
-
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Set format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
-		f->type, q_data->crop_width, q_data->height,
-		q_data->fmt->fourcc, q_data->sizeimage);
+		 f->type, q_data->crop_width, q_data->height,
+		 q_data->fmt->fourcc, q_data->sizeimage);
 
 	if (ctx->dev->decode && q_data->fmt->flags & V4L2_FMT_FLAG_COMPRESSED &&
 	    f->fmt.pix.width && f->fmt.pix.height) {
@@ -1373,8 +1373,10 @@ static const struct v4l2_ioctl_ops bcm2835_codec_ioctl_ops = {
  */
 
 static int bcm2835_codec_queue_setup(struct vb2_queue *vq,
-				unsigned int *nbuffers, unsigned int *nplanes,
-				unsigned int sizes[], struct device *alloc_devs[])
+				     unsigned int *nbuffers,
+				     unsigned int *nplanes,
+				     unsigned int sizes[],
+				     struct device *alloc_devs[])
 {
 	struct bcm2835_codec_ctx *ctx = vb2_get_drv_priv(vq);
 	struct bcm2835_codec_q_data *q_data;
@@ -1406,8 +1408,10 @@ static int bcm2835_codec_buf_init(struct vb2_buffer *vb)
 {
 	struct bcm2835_codec_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct vb2_v4l2_buffer *vb2 = to_vb2_v4l2_buffer(vb);
-	struct v4l2_m2m_buffer *m2m = container_of(vb2, struct v4l2_m2m_buffer, vb);
-	struct m2m_mmal_buffer *buf = container_of(m2m, struct m2m_mmal_buffer, m2m);
+	struct v4l2_m2m_buffer *m2m = container_of(vb2, struct v4l2_m2m_buffer,
+						   vb);
+	struct m2m_mmal_buffer *buf = container_of(m2m, struct m2m_mmal_buffer,
+						   m2m);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: ctx:%p, vb %p\n",
 		 __func__, ctx, vb);
@@ -1424,8 +1428,10 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 	struct bcm2835_codec_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct bcm2835_codec_q_data *q_data;
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
-	struct v4l2_m2m_buffer *m2m = container_of(vbuf, struct v4l2_m2m_buffer, vb);
-	struct m2m_mmal_buffer *buf = container_of(m2m, struct m2m_mmal_buffer, m2m);
+	struct v4l2_m2m_buffer *m2m = container_of(vbuf, struct v4l2_m2m_buffer,
+						   vb);
+	struct m2m_mmal_buffer *buf = container_of(m2m, struct m2m_mmal_buffer,
+						   m2m);
 	int ret;
 
 	v4l2_dbg(3, debug, &ctx->dev->v4l2_dev, "%s: type: %d ptr %p\n",
@@ -1436,8 +1442,8 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 		if (vbuf->field == V4L2_FIELD_ANY)
 			vbuf->field = V4L2_FIELD_NONE;
 		if (vbuf->field != V4L2_FIELD_NONE) {
-			dprintk(ctx->dev, "%s field isn't supported\n",
-					__func__);
+			v4l2_err(&ctx->dev->v4l2_dev, "%s field isn't supported\n",
+				 __func__);
 			return -EINVAL;
 		}
 	}
@@ -1452,7 +1458,6 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 	if (!V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type))
 		vb2_set_plane_payload(vb, 0, q_data->sizeimage);
 
-#if defined(CONFIG_BCM_VC_SM_CMA)
 	/*
 	 * We want to do this at init, but vb2_core_expbuf checks that the
 	 * index < q->num_buffers, and q->num_buffers only gets updated once
@@ -1468,9 +1473,6 @@ static int bcm2835_codec_buf_prepare(struct vb2_buffer *vb)
 	} else {
 		ret = 0;
 	}
-#else
-	ret = 0;
-#endif
 
 	return ret;
 }
@@ -1490,30 +1492,32 @@ static void bcm2835_codec_buffer_cleanup(struct vb2_buffer *vb)
 {
 	struct bcm2835_codec_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct vb2_v4l2_buffer *vb2 = to_vb2_v4l2_buffer(vb);
-	struct v4l2_m2m_buffer *m2m = container_of(vb2, struct v4l2_m2m_buffer, vb);
-	struct m2m_mmal_buffer *buf = container_of(m2m, struct m2m_mmal_buffer, m2m);
+	struct v4l2_m2m_buffer *m2m = container_of(vb2, struct v4l2_m2m_buffer,
+						   vb);
+	struct m2m_mmal_buffer *buf = container_of(m2m, struct m2m_mmal_buffer,
+						   m2m);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: ctx:%p, vb %p\n",
 		 __func__, ctx, vb);
 
 	mmal_vchi_buffer_cleanup(&buf->mmal);
 
-#if defined(CONFIG_BCM_VC_SM_CMA)
 	if (buf->mmal.dma_buf) {
 		dma_buf_put(buf->mmal.dma_buf);
 		buf->mmal.dma_buf = NULL;
 	}
-#endif
 }
 
-static int bcm2835_codec_start_streaming(struct vb2_queue *q, unsigned count)
+static int bcm2835_codec_start_streaming(struct vb2_queue *q,
+					 unsigned int count)
 {
 	struct bcm2835_codec_ctx *ctx = vb2_get_drv_priv(q);
 	struct bcm2835_codec_dev *dev = ctx->dev;
 	struct bcm2835_codec_q_data *q_data = get_q_data(ctx, q->type);
 	int ret;
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: type: %d count %d\n", __func__, q->type, count);
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: type: %d count %d\n",
+		 __func__, q->type, count);
 	q_data->sequence = 0;
 
 	if (!ctx->component_enabled) {
@@ -1521,7 +1525,7 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q, unsigned count)
 						  ctx->component);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling component, ret %d\n",
-				__func__, ret);
+				 __func__, ret);
 		ctx->component_enabled = true;
 	}
 
@@ -1542,7 +1546,7 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q, unsigned count)
 					     ip_buffer_cb);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling i/p port, ret %d\n",
-				__func__, ret);
+				 __func__, ret);
 	} else {
 		ctx->component->output[0].cb_ctx = ctx;
 		ret = vchiq_mmal_port_enable(dev->instance,
@@ -1550,7 +1554,7 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q, unsigned count)
 					     op_buffer_cb);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling o/p port, ret %d\n",
-				__func__, ret);
+				 __func__, ret);
 	}
 	return ret;
 }
@@ -1582,7 +1586,7 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 			vbuf = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
 		else
 			vbuf = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
-		if (vbuf == NULL)
+		if (!vbuf)
 			break;
 		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: return buffer %p\n",
 			 __func__, vbuf);
@@ -1603,7 +1607,8 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 		ret = wait_for_completion_timeout(&ctx->frame_cmplt, HZ);
 		if (ret <= 0) {
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Timeout waiting for buffers to be returned - %d outstanding\n",
-				 __func__, atomic_read(&port->buffers_with_vpu));
+				 __func__,
+				 atomic_read(&port->buffers_with_vpu));
 			break;
 		}
 	}
@@ -1629,10 +1634,10 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 	if (!ctx->component->input[0].enabled &&
 	    !ctx->component->output[0].enabled) {
 		ret = vchiq_mmal_component_disable(dev->instance,
-						  ctx->component);
+						   ctx->component);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling component, ret %d\n",
-				__func__, ret);
+				 __func__, ret);
 	}
 
 	if (V4L2_TYPE_IS_OUTPUT(q->type))
@@ -1654,7 +1659,8 @@ static const struct vb2_ops bcm2835_codec_qops = {
 	.wait_finish	 = vb2_ops_wait_finish,
 };
 
-static int queue_init(void *priv, struct vb2_queue *src_vq, struct vb2_queue *dst_vq)
+static int queue_init(void *priv, struct vb2_queue *src_vq,
+		      struct vb2_queue *dst_vq)
 {
 	struct bcm2835_codec_ctx *ctx = priv;
 	int ret;
@@ -1694,14 +1700,11 @@ static int bcm2835_codec_open(struct file *file)
 	struct bcm2835_codec_dev *dev = video_drvdata(file);
 	struct bcm2835_codec_ctx *ctx = NULL;
 	struct v4l2_ctrl_handler *hdl;
-#if defined(CONFIG_BCM_VC_SM_CMA)
 	unsigned int enable = 1;
-#endif
 	int rc = 0;
 
-	v4l2_err(&dev->v4l2_dev, "Creating instance for %s\n",
-		dev->decode ? "decode" : "encode");
-	v4l2_err(&dev->v4l2_dev, "%s: waiting for mutex\n", __func__);
+	v4l2_dbg(1, debug, &dev->v4l2_dev, "Creating instance for %s\n",
+		 dev->decode ? "decode" : "encode");
 	if (mutex_lock_interruptible(&dev->dev_mutex)) {
 		v4l2_err(&dev->v4l2_dev, "Mutex fail\n");
 		return -ERESTARTSYS;
@@ -1724,7 +1727,6 @@ static int bcm2835_codec_open(struct file *file)
 		goto open_unlock;
 	}
 
-#if defined(CONFIG_BCM_VC_SM_CMA)
 	vchiq_mmal_port_parameter_set(
 			dev->instance,
 			&ctx->component->input[0],
@@ -1735,7 +1737,7 @@ static int bcm2835_codec_open(struct file *file)
 			&ctx->component->output[0],
 			MMAL_PARAMETER_ZERO_COPY,
 			&enable, sizeof(enable));
-#endif
+
 	ctx->q_data[V4L2_M2M_SRC].fmt = get_default_format(dev->decode, false);
 	ctx->q_data[V4L2_M2M_DST].fmt = get_default_format(dev->decode, true);
 	if (dev->decode) {
@@ -1789,14 +1791,13 @@ static int bcm2835_codec_open(struct file *file)
 	setup_mmal_port_format(ctx, dev->decode, &ctx->q_data[V4L2_M2M_DST],
 			       &ctx->component->output[0]);
 
-
 	rc = vchiq_mmal_port_set_format(dev->instance,
-					 &ctx->component->input[0]);
+					&ctx->component->input[0]);
 	if (rc < 0)
 		goto destroy_component;
 
 	rc = vchiq_mmal_port_set_format(dev->instance,
-					 &ctx->component->output[0]);
+					&ctx->component->output[0]);
 	if (rc < 0)
 		goto destroy_component;
 
@@ -1814,7 +1815,6 @@ static int bcm2835_codec_open(struct file *file)
 				 ctx->component->output[0].minimum_buffer.size);
 	}
 
-
 	/* Initialise V4L2 contexts */
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
 	file->private_data = &ctx->fh;
@@ -1825,9 +1825,9 @@ static int bcm2835_codec_open(struct file *file)
 		v4l2_ctrl_handler_init(hdl, 4);
 
 		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
-				  V4L2_CID_MPEG_VIDEO_BITRATE_MODE,
-				  V4L2_MPEG_VIDEO_BITRATE_MODE_CBR, 0,
-				  V4L2_MPEG_VIDEO_BITRATE_MODE_VBR);
+				       V4L2_CID_MPEG_VIDEO_BITRATE_MODE,
+				       V4L2_MPEG_VIDEO_BITRATE_MODE_CBR, 0,
+				       V4L2_MPEG_VIDEO_BITRATE_MODE_VBR);
 		v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
 				  V4L2_CID_MPEG_VIDEO_BITRATE,
 				  25 * 1000, 25 * 1000 * 1000,
@@ -1871,7 +1871,7 @@ static int bcm2835_codec_open(struct file *file)
 	atomic_inc(&dev->num_inst);
 
 	v4l2_err(&dev->v4l2_dev, "Created instance: %p, m2m_ctx: %p\n",
-		ctx, ctx->fh.m2m_ctx);
+		 ctx, ctx->fh.m2m_ctx);
 
 	mutex_unlock(&dev->dev_mutex);
 	return 0;
@@ -1892,16 +1892,14 @@ static int bcm2835_codec_release(struct file *file)
 	struct bcm2835_codec_dev *dev = video_drvdata(file);
 	struct bcm2835_codec_ctx *ctx = file2ctx(file);
 
-	v4l2_err(&dev->v4l2_dev, "%s: Releasing instance %p\n", __func__, ctx);
+	v4l2_dbg(1, debug, &dev->v4l2_dev, "%s: Releasing instance %p\n",
+		 __func__, ctx);
 
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
 	v4l2_ctrl_handler_free(&ctx->hdl);
-	v4l2_err(&dev->v4l2_dev, "%s: Releasing instance %p - waiting for mutex\n", __func__, ctx);
 	mutex_lock(&dev->dev_mutex);
-	v4l2_err(&dev->v4l2_dev, "%s: Releasing instance %p - obtained mutex\n", __func__, ctx);
 	v4l2_m2m_ctx_release(ctx->fh.m2m_ctx);
-	v4l2_err(&dev->v4l2_dev, "%s: Releasing instance %p - ctx_released\n", __func__, ctx);
 
 	vchiq_mmal_component_finalise(dev->instance, ctx->component);
 
@@ -1909,7 +1907,6 @@ static int bcm2835_codec_release(struct file *file)
 	kfree(ctx);
 
 	atomic_dec(&dev->num_inst);
-	v4l2_err(&dev->v4l2_dev, "%s: Releasing instance %p - done\n", __func__, ctx);
 
 	return 0;
 }
@@ -1946,13 +1943,11 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 	int ret;
 
-
 	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
 	if (!dev)
 		return -ENOMEM;
 
 	dev->pdev = pdev;
-//	spin_lock_init(&dev->irqlock);
 
 	if (of_device_is_compatible(node, "raspberrypi,bcm2835-v4l2-decoder"))
 		dev->decode = true;
@@ -1984,11 +1979,11 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 	}
 
 	video_set_drvdata(vfd, dev);
-	snprintf(vfd->name, sizeof(vfd->name), "%s", bcm2835_codec_videodev.name);
-	v4l2_info(&dev->v4l2_dev,
-			"Device registered as /dev/video%d\n", vfd->num);
+	snprintf(vfd->name, sizeof(vfd->name), "%s",
+		 bcm2835_codec_videodev.name);
+	v4l2_info(&dev->v4l2_dev, "Device registered as /dev/video%d\n",
+		  vfd->num);
 
-	//setup_timer(&dev->timer, device_isr, (long)dev);
 	platform_set_drvdata(pdev, dev);
 
 	dev->m2m_dev = v4l2_m2m_init(&m2m_ops);
