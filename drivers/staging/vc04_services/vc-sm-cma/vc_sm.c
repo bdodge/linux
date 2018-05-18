@@ -378,29 +378,6 @@ void vc_sm_import_dma_buf_release(struct dma_buf *dmabuf)
 
 	res->in_use = false;
 
-	/*
-	 * FIXME: This should be done after the VPU has released the dma_buf,
-	 * but currently Videobuf2 objects if anything is holding a reference
-	 * after it thinks it should.
-	 */
-	/* Handle cleaning up imported dmabufs */
-	if (res->sgt) {
-		dma_buf_unmap_attachment(res->attach, res->sgt,
-					 DMA_BIDIRECTIONAL);
-		res->sgt = NULL;
-	}
-	if (res->attach) {
-		dma_buf_detach(res->dma_buf, res->attach);
-		res->attach = NULL;
-	}
-
-	/* Release the dma_buf (whether ours or imported) */
-	if (res->import_dma_buf) {
-		dma_buf_put(res->import_dma_buf);
-		res->import_dma_buf = NULL;
-		res->dma_buf = NULL;
-	}
-
 	vc_sm_release_resource(res, 0);
 }
 
