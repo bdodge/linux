@@ -400,6 +400,9 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 					      &dev->capture.frame_count,
 					      sizeof(dev->capture.frame_count));
 	}
+
+	if (mmal_flags & MMAL_BUFFER_HEADER_FLAG_KEYFRAME)
+		buf->vb.flags |= V4L2_BUF_FLAG_KEYFRAME;
 }
 
 static int enable_camera(struct bm2835_mmal_dev *dev)
