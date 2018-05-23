@@ -551,7 +551,7 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	    vchiq_mmal_port_enable(dev->instance, dev->capture.port, buffer_cb);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev,
-			"Failed to enable capture port - error %d. Disabling camera port again\n",
+			 "Failed to enable capture port - error %d. Disabling camera port again\n",
 			ret);
 
 		vchiq_mmal_port_disable(dev->instance,
@@ -1294,7 +1294,7 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 }
 
 static int vidioc_enum_framesizes(struct file *file, void *fh,
-			   struct v4l2_frmsizeenum *fsize)
+				  struct v4l2_frmsizeenum *fsize)
 {
 	struct bm2835_mmal_dev *dev = video_drvdata(file);
 	static const struct v4l2_frmsize_stepwise sizes = {
