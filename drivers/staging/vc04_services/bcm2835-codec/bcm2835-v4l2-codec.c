@@ -79,6 +79,7 @@ struct bcm2835_codec_fmt {
 	u32	flags;
 	u32	mmal_fmt;
 	bool	decode_only;
+	bool	encode_only;
 	int	size_multiplier_x2;
 };
 
@@ -91,6 +92,7 @@ static struct bcm2835_codec_fmt raw_formats[] = {
 		.flags = 0,
 		.mmal_fmt = MMAL_ENCODING_I420,
 		.size_multiplier_x2 = 3,
+		.encode_only = false,
 	}, {
 		.fourcc	= V4L2_PIX_FMT_YVU420,
 		.depth	= 8,
@@ -98,6 +100,7 @@ static struct bcm2835_codec_fmt raw_formats[] = {
 		.flags = 0,
 		.mmal_fmt = MMAL_ENCODING_YV12,
 		.size_multiplier_x2 = 3,
+		.encode_only = false,
 	}, {
 		.fourcc	= V4L2_PIX_FMT_NV12,
 		.depth	= 8,
@@ -105,6 +108,7 @@ static struct bcm2835_codec_fmt raw_formats[] = {
 		.flags = 0,
 		.mmal_fmt = MMAL_ENCODING_NV12,
 		.size_multiplier_x2 = 3,
+		.encode_only = false,
 	}, {
 		.fourcc	= V4L2_PIX_FMT_NV21,
 		.depth	= 8,
@@ -112,6 +116,7 @@ static struct bcm2835_codec_fmt raw_formats[] = {
 		.flags = 0,
 		.mmal_fmt = MMAL_ENCODING_NV21,
 		.size_multiplier_x2 = 3,
+		.encode_only = false,
 	}, {
 		.fourcc	= V4L2_PIX_FMT_RGB565,
 		.depth	= 8,
@@ -119,6 +124,39 @@ static struct bcm2835_codec_fmt raw_formats[] = {
 		.flags = 0,
 		.mmal_fmt = MMAL_ENCODING_RGB16,
 		.size_multiplier_x2 = 4,
+		.encode_only = false,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_YUYV,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_YUYV,
+		.size_multiplier_x2 = 4,
+		.encode_only = true,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_YVYU,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_YVYU,
+		.size_multiplier_x2 = 4,
+		.encode_only = true,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_UYVY,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_UYVY,
+		.size_multiplier_x2 = 4,
+		.encode_only = true,
+	}, {
+		.fourcc	= V4L2_PIX_FMT_VYUY,
+		.depth	= 8,
+		.bytesperline_align = 32,
+		.flags = 0,
+		.mmal_fmt = MMAL_ENCODING_VYUY,
+		.size_multiplier_x2 = 4,
+		.encode_only = true,
 	},
 };
 
@@ -245,8 +283,14 @@ static struct bcm2835_codec_fmt *find_format(struct v4l2_format *f, bool decode,
 			break;
 	}
 
-	/* Some formats are only supported for decoding, not encoding. */
+	/*
+	 * Some (comnpressed) formats are only supported for decoding, not
+	 * encoding.
+	 */
 	if (!decode && fmts->list[k].decode_only)
+		return NULL;
+	/* Some (raw) formats are only supported for encoding, not decoding. */
+	if (decode && fmts->list[k].encode_only)
 		return NULL;
 
 	if (k == fmts->num_entries)
@@ -734,6 +778,10 @@ static int enum_fmt(struct v4l2_fmtdesc *f, bool decode, bool capture)
 		    fmts->list[f->index].flags & V4L2_FMT_FLAG_COMPRESSED &&
 		    fmts->list[f->index].decode_only)
 			return -EINVAL;
+		if (decode &&
+		    !(fmts->list[f->index].flags & V4L2_FMT_FLAG_COMPRESSED) &&
+		    fmts->list[f->index].encode_only)
+			return -EINVAL;
 
 		fmt = &fmts->list[f->index];
 		f->pixelformat = fmt->fourcc;
@@ -1022,6 +1070,8 @@ static int vidioc_g_selection(struct file *file, void *priv,
 		return -EINVAL;
 
 	q_data = get_q_data(ctx, s->type);
+	if (!q_data)
+		return -EINVAL;
 
 	if (ctx->dev->decode) {
 		switch (s->target) {
@@ -1079,6 +1129,9 @@ static int vidioc_s_selection(struct file *file, void *priv,
 		return -EINVAL;
 
 	q_data = get_q_data(ctx, s->type);
+	if (!q_data)
+		return -EINVAL;
+
 	if (ctx->dev->decode) {
 		switch (s->target) {
 		case V4L2_SEL_TGT_COMPOSE:
@@ -1178,6 +1231,110 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
 						    &ctrl->val,
 						    sizeof(ctrl->val));
 		break;
+
+	case V4L2_CID_MPEG_VIDEO_H264_LEVEL: {
+		struct mmal_parameter_video_profile param;
+		u32 size = sizeof(param);
+
+		if (vchiq_mmal_port_parameter_get(ctx->dev->instance,
+						  &ctx->component->output[0],
+						  MMAL_PARAMETER_PROFILE,
+						  &param,
+						  &size)) {
+			return -EINVAL;
+		}
+
+		switch (ctrl->val) {
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_1;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1B:
+			param.level = MMAL_VIDEO_LEVEL_H264_1b;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_1:
+			param.level = MMAL_VIDEO_LEVEL_H264_11;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_2:
+			param.level = MMAL_VIDEO_LEVEL_H264_12;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_3:
+			param.level = MMAL_VIDEO_LEVEL_H264_13;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_2_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_2;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_2_1:
+			param.level = MMAL_VIDEO_LEVEL_H264_21;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_2_2:
+			param.level = MMAL_VIDEO_LEVEL_H264_22;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_3_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_3;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_3_1:
+			param.level = MMAL_VIDEO_LEVEL_H264_31;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_3_2:
+			param.level = MMAL_VIDEO_LEVEL_H264_32;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_4_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_4;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_4_1:
+			param.level = MMAL_VIDEO_LEVEL_H264_41;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_4_2:
+			param.level = MMAL_VIDEO_LEVEL_H264_42;
+			break;
+		default:
+			/* Should never get here */
+			break;
+		}
+		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
+						    &ctx->component->output[0],
+						    MMAL_PARAMETER_PROFILE,
+						    &param,
+						    size);
+		break;
+	}
+	case V4L2_CID_MPEG_VIDEO_H264_PROFILE: {
+		struct mmal_parameter_video_profile param;
+		u32 size = sizeof(param);
+
+		if (vchiq_mmal_port_parameter_get(ctx->dev->instance,
+						  &ctx->component->output[0],
+						  MMAL_PARAMETER_PROFILE,
+						  &param,
+						  &size)) {
+			return -EINVAL;
+		}
+
+		switch (ctrl->val) {
+		case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
+			param.profile = MMAL_VIDEO_PROFILE_H264_BASELINE;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE:
+			param.profile =
+				MMAL_VIDEO_PROFILE_H264_CONSTRAINED_BASELINE;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
+			param.profile = MMAL_VIDEO_PROFILE_H264_MAIN;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
+			param.profile = MMAL_VIDEO_PROFILE_H264_HIGH;
+			break;
+		default:
+			/* Should never get here */
+			break;
+		}
+		ret = vchiq_mmal_port_parameter_set(ctx->dev->instance,
+						    &ctx->component->output[0],
+						    MMAL_PARAMETER_PROFILE,
+						    &param,
+						    size);
+		break;
+	}
 
 	default:
 		v4l2_err(&ctx->dev->v4l2_dev, "Invalid control\n");
@@ -1776,13 +1933,14 @@ static int bcm2835_codec_open(struct file *file)
 
 		ctx->q_data[V4L2_M2M_DST].crop_width = DEFAULT_WIDTH;
 		ctx->q_data[V4L2_M2M_DST].crop_height = DEFAULT_HEIGHT;
-		ctx->q_data[V4L2_M2M_DST].bytesperline = DEFAULT_WIDTH;
+		ctx->q_data[V4L2_M2M_DST].bytesperline = 0;
 		ctx->q_data[V4L2_M2M_DST].height = DEFAULT_HEIGHT;
 		ctx->q_data[V4L2_M2M_DST].sizeimage =
 						DEFAULT_COMPRESSED_BUF_SIZE;
 	}
 
 	ctx->colorspace = V4L2_COLORSPACE_REC709;
+	ctx->colorspace = V4L2_COLORSPACE_SMPTE170M;
 	ctx->bitrate = 10 * 1000 * 1000;
 
 	setup_mmal_port_format(ctx, dev->decode, &ctx->q_data[V4L2_M2M_SRC],
@@ -1840,10 +1998,34 @@ static int bcm2835_codec_open(struct file *file)
 				  V4L2_CID_MPEG_VIDEO_H264_I_PERIOD,
 				  0, 0x7FFFFFFF,
 				  1, 60);
-		//v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
-		//		V4L2_CID_MPEG_VIDEO_H264_LEVEL, 0, 1, 1, 0);
-		//v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
-		//		V4L2_CID_MPEG_VIDEO_H264_PROFILE, 0, 1, 1, 0);
+		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
+				V4L2_CID_MPEG_VIDEO_H264_LEVEL,
+				V4L2_MPEG_VIDEO_H264_LEVEL_4_2,
+				~(BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_0) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1B) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_1) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_2) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_3) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_0) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_1) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_2) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_0) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_1) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_2) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_0) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_1) |
+				  BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_2)
+				  ),
+				V4L2_MPEG_VIDEO_H264_LEVEL_4_0);
+
+		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
+				       V4L2_CID_MPEG_VIDEO_H264_PROFILE,
+				       V4L2_MPEG_VIDEO_H264_PROFILE_HIGH,
+				       ~(BIT(V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE) |
+					 BIT(V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE) |
+					 BIT(V4L2_MPEG_VIDEO_H264_PROFILE_MAIN) |
+					 BIT(V4L2_MPEG_VIDEO_H264_PROFILE_HIGH)),
+				       V4L2_MPEG_VIDEO_H264_PROFILE_HIGH);
 		if (hdl->error) {
 			rc = hdl->error;
 			goto free_ctrl_handler;
