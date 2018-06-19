@@ -131,7 +131,6 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	sx150x.dtbo \
 	tc358743.dtbo \
 	tc358743-fast.dtbo \
-	tc358743-audio.dtbo \
 	tinylcd35.dtbo \
 	uart0.dtbo \
 	uart1.dtbo \
