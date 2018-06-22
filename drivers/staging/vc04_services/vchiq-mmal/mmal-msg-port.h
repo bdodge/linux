@@ -13,6 +13,8 @@
  *          Simon Mellor @ Broadcom
  *          Luke Diamand @ Broadcom
  */
+#ifndef MMAL_MSG_PORT_H
+#define MMAL_MSG_PORT_H
 
 /* MMAL_PORT_TYPE_T */
 enum mmal_port_type {
@@ -110,3 +112,4 @@ struct mmal_port {
 				 * values.
 				 */
 };
+#endif
