@@ -4,7 +4,7 @@ config VIDEO_BCM2835
 	depends on VIDEO_V4L2 && (ARCH_BCM2835 || COMPILE_TEST)
 	select BCM2835_VCHIQ
 	select VIDEOBUF2_VMALLOC
-	select BTREE
+	select BCM2835_VCHIQ_MMAL
 	help
 	  Say Y here to enable camera host interface devices for
 	  Broadcom BCM2835 SoC. This operates over the VCHIQ interface
