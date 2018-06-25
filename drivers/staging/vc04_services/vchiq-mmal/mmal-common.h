@@ -54,6 +54,10 @@ struct mmal_buffer {
 	unsigned long buffer_size; /* size of allocated buffer */
 
 	struct mmal_msg_context *msg_context;
+
+	struct dma_buf *dma_buf;/* Exported dmabuf fd from videobuf2 */
+	int vcsm_handle;	/* VCSM handle having imported the dmabuf */
+	u32 vc_handle;		/* VC handle to that dmabuf */
 };
 
 /* */
