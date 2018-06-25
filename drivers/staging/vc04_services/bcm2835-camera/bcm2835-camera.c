@@ -353,14 +353,14 @@ static inline bool is_capturing(struct bm2835_mmal_dev *dev)
 static void buffer_cb(struct vchiq_mmal_instance *instance,
 		      struct vchiq_mmal_port *port,
 		      int status,
-		      struct mmal_buffer *buf,
-		      unsigned long length, u32 mmal_flags, s64 dts, s64 pts)
+		      struct mmal_buffer *buf)
 {
 	struct bm2835_mmal_dev *dev = port->cb_ctx;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 		 "%s: status:%d, buf:%p, length:%lu, flags %u, pts %lld\n",
-		 __func__, status, buf, length, mmal_flags, pts);
+		 __func__, status, buf, buf->length, buf->mmal_flags,
+		 buf->pts);
 
 	if (status != 0) {
 		/* error in transfer */
@@ -371,7 +371,7 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		return;
 	}
 
-	if (length == 0) {
+	if (buf->length == 0) {
 		/* stream ended */
 		if (buf) {
 			/* this should only ever happen if the port is
@@ -409,15 +409,15 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Buffer time set as current time - %lld",
 			 buf->vb.vb2_buf.timestamp);
-	} else if (pts != 0) {
-		s64 runtime_us = pts -
+	} else if (buf->pts != 0) {
+		s64 runtime_us = buf->pts -
 		    dev->capture.vc_start_timestamp;
 		buf->vb.vb2_buf.timestamp = (runtime_us * NSEC_PER_USEC) +
 		    dev->capture.kernel_start_timestamp;
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Buffer time set as converted timestamp - %llu = (pts [%lld usec] - vc start time [%llu usec]) + kernel start time [%llu nsec]\n",
 			 buf->vb.vb2_buf.timestamp,
-			 pts, dev->capture.vc_start_timestamp,
+			 buf->pts, dev->capture.vc_start_timestamp,
 			 dev->capture.kernel_start_timestamp);
 	} else {
 		if (dev->capture.last_timestamp) {
@@ -436,15 +436,15 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 	dev->capture.last_timestamp = buf->vb.vb2_buf.timestamp;
 	buf->vb.sequence = dev->capture.sequence++;
 
-	vb2_set_plane_payload(&buf->vb.vb2_buf, 0, length);
-	if (mmal_flags & MMAL_BUFFER_HEADER_FLAG_KEYFRAME)
+	vb2_set_plane_payload(&buf->vb.vb2_buf, 0, buf->length);
+	if (buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_KEYFRAME)
 		buf->vb.flags |= V4L2_BUF_FLAG_KEYFRAME;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 		 "Buffer has ts %llu", dev->capture.last_timestamp);
 	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 
-	if (mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS &&
+	if (buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS &&
 	    is_capturing(dev)) {
 		v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
 			 "Grab another frame as buffer has EOS");

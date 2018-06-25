@@ -58,6 +58,11 @@ struct mmal_buffer {
 	struct dma_buf *dma_buf;/* Exported dmabuf fd from videobuf2 */
 	int vcsm_handle;	/* VCSM handle having imported the dmabuf */
 	u32 vc_handle;		/* VC handle to that dmabuf */
+
+	unsigned long length;
+	u32 mmal_flags;
+	s64 dts;
+	s64 pts;
 };
 
 /* */
