@@ -28,7 +28,6 @@
 #include <linux/vmalloc.h>
 #include <linux/btree.h>
 #include <asm/cacheflush.h>
-#include <media/videobuf2-dma-contig.h>
 
 #include "mmal-common.h"
 #include "mmal-parameters.h"
