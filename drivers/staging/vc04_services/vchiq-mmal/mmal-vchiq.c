@@ -41,8 +41,11 @@
 #define USE_VCHIQ_ARM
 #include "interface/vchi/vchi.h"
 
-/* maximum number of components supported */
-#define VCHIQ_MMAL_MAX_COMPONENTS 4
+/*
+ * Maximum number of components supported. Matches the max supported by the
+ * VPU
+ */
+#define VCHIQ_MMAL_MAX_COMPONENTS 64
 
 /*#define FULL_MSG_DUMP 1*/
 
@@ -181,8 +184,6 @@ struct vchiq_mmal_instance {
 	/* mapping table between context handles and mmal_msg_contexts */
 	struct vchiq_mmal_context_map context_map;
 
-	/* component to use next */
-	int component_idx;
 	struct vchiq_mmal_component component[VCHIQ_MMAL_MAX_COMPONENTS];
 };
 
@@ -1949,14 +1950,21 @@ int vchiq_mmal_component_init(struct vchiq_mmal_instance *instance,
 	if (mutex_lock_interruptible(&instance->vchiq_mutex))
 		return -EINTR;
 
-	if (instance->component_idx == VCHIQ_MMAL_MAX_COMPONENTS) {
+	for (idx = 0; idx < VCHIQ_MMAL_MAX_COMPONENTS; idx++) {
+		if (!instance->component[idx].in_use) {
+			component = &instance->component[idx];
+			break;
+		}
+	}
+
+	if (!component) {
 		ret = -EINVAL;	/* todo is this correct error? */
 		goto unlock;
 	}
 
-	component = &instance->component[instance->component_idx];
 	memset(component, 0, sizeof(*component));
 
+	component->in_use = true;
 	ret = create_component(instance, component, name);
 	if (ret < 0)
 		goto unlock;
@@ -2008,8 +2016,6 @@ int vchiq_mmal_component_init(struct vchiq_mmal_instance *instance,
 		init_event_context(instance, &component->clock[idx]);
 	}
 
-	instance->component_idx++;
-
 	*component_out = component;
 
 	mutex_unlock(&instance->vchiq_mutex);
@@ -2020,6 +2026,8 @@ release_component:
 	destroy_component(instance, component);
 	free_all_event_contexts(component);
 unlock:
+	if (component)
+		component->in_use = false;
 	mutex_unlock(&instance->vchiq_mutex);
 
 	return ret;
@@ -2042,6 +2050,7 @@ int vchiq_mmal_component_finalise(struct vchiq_mmal_instance *instance,
 
 	ret = destroy_component(instance, component);
 	free_all_event_contexts(component);
+	component->in_use = false;
 
 	mutex_unlock(&instance->vchiq_mutex);
 
