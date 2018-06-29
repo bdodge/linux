@@ -118,6 +118,12 @@ static const char *const port_action_type_names[] = {
 #define DBG_DUMP_MSG(MSG, MSG_LEN, TITLE)
 #endif
 
+/*
+ * timeout for synchronous msg responses in seconds.
+ * Helpful to increase this if stopping in the VPU debugger.
+ */
+#define SYNC_MSG_TIMEOUT	3
+
 struct vchiq_mmal_instance;
 
 /* normal message context */
@@ -900,7 +906,8 @@ static int send_synchronous_mmal_msg(struct vchiq_mmal_instance *instance,
 		return ret;
 	}
 
-	ret = wait_for_completion_timeout(&msg_context->u.sync.cmplt, 3 * HZ);
+	ret = wait_for_completion_timeout(&msg_context->u.sync.cmplt,
+					  SYNC_MSG_TIMEOUT * HZ);
 	if (ret <= 0) {
 		pr_err("error %d waiting for sync completion\n", ret);
 		if (ret == 0)
