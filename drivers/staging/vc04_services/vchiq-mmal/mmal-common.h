@@ -60,6 +60,7 @@ struct mmal_buffer {
 	u32 mmal_flags;
 	s64 dts;
 	s64 pts;
+	u32 cmd;		/* 0 for data. Non-zero for event */
 };
 
 /* */
