@@ -83,6 +83,10 @@ struct vchiq_mmal_port {
 	void *cb_ctx;
 
 	bool zero_copy;
+
+	/* ensure serialised use of the one event context structure */
+	struct mutex event_context_mutex;
+	struct mmal_msg_context *event_context;
 };
 
 struct vchiq_mmal_component {
