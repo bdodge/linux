@@ -1,0 +1,33 @@
+1) Convert to be a platform driver.
+
+Right now when the module probes, it tries to initialize VCHI and
+errors out if it wasn't ready yet.  If bcm2835-v4l2 was built in, then
+VCHI generally isn't ready because it depends on both the firmware and
+mailbox drivers having already loaded.
+
+We should have VCHI create a platform device once it's initialized,
+and have this driver bind to it, so that we automatically load the
+v4l2 module after VCHI loads.
+
+2) Support SELECTION API to define crop region on the image for encode.
+
+Particularly for resolutions that aren't a multiple of the macroblock
+size, the codec will report a resolution that is a multiple of the macroblock
+size (it has to have the memory to decode into), and then a different crop
+region within that buffer.
+The most common example is 1080P, where the buffer will be 1920x1088 with a
+crop region of 1920x1080.
+
+3) Rework component creation so that you can open an unlimited number of
+   instances
+
+V4L2 has this (slightly bonkers) idea that you can open as many instances as you
+like, and queue_setup or later is where resources need to be allocated.
+Currently we create a MMAL component at open as then we have the info on
+supported formats and can configure it appropriately.
+If we're to pass v4l2-compliance then that all has to be reworked so that we
+create one component at probe and extract all info, and then destroy it.
+The "active" component then needs to be created at queue_setup (which queue
+isn't specified).
+It has been raised that this is likely to break GStreamer's falling back to a
+software codec - https://www.spinics.net/lists/linux-media/msg135819.html
