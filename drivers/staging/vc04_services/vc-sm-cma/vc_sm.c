@@ -815,11 +815,23 @@ int vc_sm_cma_import_dmabuf(struct dma_buf *src_dmabuf, int *handle)
 }
 EXPORT_SYMBOL_GPL(vc_sm_cma_import_dmabuf);
 
+/*
+ *   Register the driver with device tree
+ */
+
+static const struct of_device_id bcm2835_vc_sm_cma_of_match[] = {
+	{.compatible = "raspberrypi,bcm2835-vc-sm-cma",},
+	{ /* sentinel */ },
+};
+
+MODULE_DEVICE_TABLE(of, bcm2835_vc_sm_cma_of_match);
+
 static struct platform_driver bcm2835_vcsm_cma_driver = {
 	.probe = bcm2835_vc_sm_cma_probe,
 	.remove = bcm2835_vc_sm_cma_remove,
 	.driver = {
 		   .name = "vc-sm-cma",
+		   .of_match_table = bcm2835_vc_sm_cma_of_match,
 		   },
 };
 
