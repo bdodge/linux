@@ -86,6 +86,10 @@ static int debug;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Debug level 0-3");
 
+static int allow_interlaced;
+module_param(allow_interlaced, int, 0644);
+MODULE_PARM_DESC(debug, "Non-zero permits interlaced sources in s_fmt");
+
 #define unicam_dbg(level, dev, fmt, arg...)	\
 		v4l2_dbg(level, debug, &(dev)->v4l2_dev, fmt, ##arg)
 #define unicam_info(dev, fmt, arg...)	\
@@ -337,6 +341,8 @@ struct unicam_device {
 	struct v4l2_format v_fmt;
 	/* Used to store current mbus frame format */
 	struct v4l2_mbus_framefmt m_fmt;
+	/* Used to store the current video standard */
+	v4l2_std_id std;
 
 	struct unicam_fmt active_fmts[MAX_POSSIBLE_PIX_FMTS];
 	int num_active_fmt;
@@ -605,9 +611,22 @@ static inline void unicam_schedule_next_buffer(struct unicam_device *dev)
 	unicam_wr_dma_addr(dev, addr);
 }
 
-static inline void unicam_process_buffer_complete(struct unicam_device *dev)
+static inline void unicam_process_buffer_complete(struct unicam_device *dev,
+						  unsigned int frame_num)
 {
-	dev->cur_frm->vb.field = dev->m_fmt.field;
+	if (dev->m_fmt.field == V4L2_FIELD_ALTERNATE) {
+		/*
+		 * (Murphy's law says I'll have got these backwards)
+		 * For NTSC the top frame is sent with frame_num 2.
+		 * For PAL and SECAM the top frame is sent with frame_num 1.
+		 */
+		if ((frame_num == 1) ^ (dev->std & V4L2_STD_NTSC))
+			dev->cur_frm->vb.field = V4L2_FIELD_TOP;
+		else
+			dev->cur_frm->vb.field = V4L2_FIELD_BOTTOM;
+	} else {
+		dev->cur_frm->vb.field = dev->m_fmt.field;
+	}
 	dev->cur_frm->vb.sequence = dev->sequence++;
 
 	vb2_buffer_done(&dev->cur_frm->vb.vb2_buf, VB2_BUF_STATE_DONE);
@@ -627,6 +646,7 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	struct unicam_device *unicam = (struct unicam_device *)dev;
 	struct unicam_cfg *cfg = &unicam->cfg;
 	struct unicam_dmaqueue *dma_q = &unicam->dma_queue;
+	unsigned int frame_number = 0;
 	int ista, sta;
 
 	/*
@@ -646,6 +666,17 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	/* Write value back to clear the interrupts */
 	reg_write(cfg, UNICAM_ISTA, ista);
 
+	if (sta & UNICAM_PI0) {
+		u32 cap0 = reg_read(cfg, UNICAM_CAP0);
+
+		if (get_field(cap0, UNICAM_CPHV))
+			frame_number = get_field(cap0, UNICAM_CWC_MASK);
+
+		reg_write(cfg, UNICAM_CAP0, 0x80000000);
+
+		ista |= UNICAM_FEI;
+	}
+
 	if (!(sta && (UNICAM_IS | UNICAM_PI0)))
 		return IRQ_HANDLED;
 
@@ -657,14 +688,15 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 		if (unicam->cur_frm)
 			unicam->cur_frm->vb.vb2_buf.timestamp = ktime_get_ns();
 	}
-	if (ista & UNICAM_FEI || sta & UNICAM_PI0) {
+
+	if (ista & UNICAM_FEI) {
 		/*
 		 * Ensure we have swapped buffers already as we can't
 		 * stop the peripheral. Overwrite the frame we've just
 		 * captured instead.
 		 */
 		if (unicam->cur_frm && unicam->cur_frm != unicam->next_frm)
-			unicam_process_buffer_complete(unicam);
+			unicam_process_buffer_complete(unicam, frame_number);
 	}
 
 	if (ista & (UNICAM_FSI | UNICAM_LCI)) {
@@ -749,7 +781,8 @@ static int unicam_try_fmt_vid_cap(struct file *file, void *priv,
 	 * No support for receiving interlaced video, so never
 	 * request it from the sensor subdev.
 	 */
-	mbus_fmt->field = V4L2_FIELD_NONE;
+	if (!allow_interlaced)
+		mbus_fmt->field = V4L2_FIELD_NONE;
 
 	ret = v4l2_subdev_call(dev->sensor, pad, set_fmt, dev->sensor_config,
 			       &sd_fmt);
@@ -1403,6 +1436,9 @@ static int unicam_s_std(struct file *file, void *priv, v4l2_std_id std)
 	dev->v_fmt.fmt.pix.bytesperline = 0;
 
 	unicam_reset_format(dev);
+
+	/* Store for use in correctly flagging V4L2_FIELD_ALTERNATE buffers */
+	dev->std = std;
 
 	return ret;
 }
