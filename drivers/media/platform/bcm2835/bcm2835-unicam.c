@@ -624,10 +624,14 @@ static inline void unicam_process_buffer_complete(struct unicam_device *dev,
 			dev->cur_frm->vb.field = V4L2_FIELD_TOP;
 		else
 			dev->cur_frm->vb.field = V4L2_FIELD_BOTTOM;
+
+		if (frame_num == 2)
+			dev->cur_frm->vb.sequence = dev->sequence++;
+
 	} else {
 		dev->cur_frm->vb.field = dev->m_fmt.field;
+		dev->cur_frm->vb.sequence = dev->sequence++;
 	}
-	dev->cur_frm->vb.sequence = dev->sequence++;
 
 	vb2_buffer_done(&dev->cur_frm->vb.vb2_buf, VB2_BUF_STATE_DONE);
 	dev->cur_frm = dev->next_frm;
