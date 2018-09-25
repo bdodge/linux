@@ -81,6 +81,12 @@
 			status = "okay";
 		};
 
+		vcsmcma: vcsmcma {
+			compatible = "raspberrypi,bcm2835-vc-sm-cma";
+			firmware = <&firmware>;
+			status = "okay";
+		};
+
 		/* Onboard audio */
 		audio: audio {
 			compatible = "brcm,bcm2835-audio";
