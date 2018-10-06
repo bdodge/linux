@@ -2,4 +2,7 @@ ccflags-y += -Idrivers/staging/vc04_services -Idrivers/staging/vc04_services/int
 # -I"drivers/staging/android/ion/" -I"$(srctree)/fs/"
 ccflags-y += -D__VCCOREVER__=0
 
-obj-$(CONFIG_BCM_VC_SM_CMA) := vc_sm.o vc_sm_cma_vchi.o
+vc-sm-cma-$(CONFIG_BCM_VC_SM_CMA) := \
+	vc_sm.o vc_sm_cma_vchi.o
+
+obj-$(CONFIG_BCM_VC_SM_CMA) += vc-sm-cma.o

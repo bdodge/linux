@@ -54,12 +54,7 @@
 #define VC_SM_RESOURCE_NAME_DEFAULT       "sm-host-resource"
 
 #define VC_SM_DIR_ROOT_NAME	"vcsm-cma"
-#define VC_SM_DIR_ALLOC_NAME	"alloc"
 #define VC_SM_STATE		"state"
-#define VC_SM_STATS		"statistics"
-#define VC_SM_RESOURCES		"resources"
-#define VC_SM_DEBUG		"debug"
-#define VC_SM_WRITE_BUF_SIZE	128
 
 /* Private file data associated with each opened device. */
 struct vc_sm_privdata_t {
@@ -75,7 +70,6 @@ struct sm_pde_t {
 	VC_SM_SHOW show;          /* Debug fs function hookup. */
 	struct dentry *dir_entry; /* Debug fs directory entry. */
 	void *priv_data;          /* Private data */
-
 };
 
 /* Global state information. */
@@ -651,7 +645,7 @@ static void vc_sm_connected_init(void)
 
 	/* Initialize an instance of the shared memory service. */
 	sm_state->sm_handle =
-	    vc_sm_cma_vchi_init(vchi_instance, &vchi_connection, 1);
+	    vc_sm_cma_vchi_init(vchi_instance, &vchi_connection, 1, vc_sm_vpu_event);
 	if (!sm_state->sm_handle) {
 		pr_err("[%s]: failed to initialize shared memory service\n",
 		       __func__);

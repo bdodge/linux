@@ -6,6 +6,8 @@
  * Copyright: 2018, Raspberry Pi (Trading) Ltd
  * Copyright 2011-2012 Broadcom Corporation.  All rights reserved.
  *
+ * Based on vmcs_sm driver from Broadcom Corporation.
+ *
  */
 
 #ifndef __VC_SM_CMA_VCHI_H__INCLUDED__
@@ -20,12 +22,15 @@
  */
 struct sm_instance;
 
+typedef void (*vpu_event_cb)(struct sm_instance *instance, struct vc_sm_result_t *reply,
+		int reply_len);
+
 /*
  * Initialize the shared memory service, opens up vchi connection to talk to it.
  */
 struct sm_instance *vc_sm_cma_vchi_init(VCHI_INSTANCE_T vchi_instance,
 					VCHI_CONNECTION_T **vchi_connections,
-					uint32_t num_connections);
+					uint32_t num_connections, vpu_event_cb vpu_event);
 
 /*
  * Terminates the shared memory service.
@@ -48,30 +53,6 @@ int vc_sm_cma_vchi_alloc(struct sm_instance *handle,
  */
 int vc_sm_cma_vchi_free(struct sm_instance *handle, struct vc_sm_free_t *msg,
 			uint32_t *cur_trans_id);
-
-/*
- * Ask the shared memory service to lock up some memory that was previously
- * allocated by the vc_sm_cma_vchi_alloc function call.
- */
-int vc_sm_cma_vchi_lock(struct sm_instance *handle,
-			struct vc_sm_lock_unlock_t *msg,
-			struct vc_sm_lock_result_t *result,
-			uint32_t *cur_trans_id);
-
-/*
- * Ask the shared memory service to unlock some memory that was previously
- * allocated by the vc_sm_cma_vchi_alloc function call.
- */
-int vc_sm_cma_vchi_unlock(struct sm_instance *handle,
-			  struct vc_sm_lock_unlock_t *msg, u32 *cur_trans_id,
-			  uint8_t wait_reply);
-
-/*
- * Ask the shared memory service to resize some memory that was previously
- * allocated by the vc_sm_cma_vchi_alloc function call.
- */
-int vc_sm_cma_vchi_resize(struct sm_instance *handle,
-			  struct vc_sm_resize_t *msg, uint32_t *cur_trans_id);
 
 /*
  * Walk the allocated resources on the videocore side, the allocation will

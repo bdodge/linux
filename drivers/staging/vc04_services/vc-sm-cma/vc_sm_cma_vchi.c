@@ -6,6 +6,8 @@
  * Copyright: 2018, Raspberry Pi (Trading) Ltd
  * Copyright 2011-2012 Broadcom Corporation.  All rights reserved.
  *
+ * Based on vmcs_sm driver from Broadcom Corporation.
+ *
  */
 
 /* ---- Include Files ----------------------------------------------------- */
@@ -47,6 +49,8 @@ struct sm_instance {
 	VCHI_SERVICE_HANDLE_T vchi_handle[VCHI_MAX_NUM_CONNECTIONS];
 	struct task_struct *io_thread;
 	struct semaphore io_sema;
+
+	vpu_event_cb vpu_event;
 
 	u32 trans_id;
 
@@ -136,11 +140,6 @@ vc_vchi_cmd_delete(struct sm_instance *instance, struct sm_cmd_rsp_blk *blk)
 	mutex_unlock(&instance->free_lock);
 	up(&instance->free_sema);
 }
-
-/* FIXME: Pass a function pointer to this into vc_vchi_sm.c */
-extern void
-vc_sm_vpu_event(struct sm_instance *instance, struct vc_sm_result_t *reply,
-		int reply_len);
 
 static void vc_sm_cma_vchi_rx_ack(struct sm_instance *instance,
 				  struct sm_cmd_rsp_blk *cmd,
@@ -239,7 +238,9 @@ static int vc_sm_cma_vchi_videocore_io(void *arg)
 				       reply->trans_id);
 				if (reply->trans_id & 0x80000000) {
 					/* Async event or cmd from the VPU */
-					vc_sm_vpu_event(instance, reply,
+					if (instance->vpu_event)
+						instance->vpu_event(
+							instance, reply,
 							reply_len);
 				} else {
 					vc_sm_cma_vchi_rx_ack(instance, cmd,
@@ -285,7 +286,7 @@ static void vc_sm_cma_vchi_callback(void *param,
 
 struct sm_instance *vc_sm_cma_vchi_init(VCHI_INSTANCE_T vchi_instance,
 					VCHI_CONNECTION_T **vchi_connections,
-					uint32_t num_connections)
+					uint32_t num_connections, vpu_event_cb vpu_event)
 {
 	u32 i;
 	struct sm_instance *instance;
@@ -350,6 +351,7 @@ struct sm_instance *vc_sm_cma_vchi_init(VCHI_INSTANCE_T vchi_instance,
 
 		goto err_close_services;
 	}
+	instance->vpu_event = vpu_event;
 	set_user_nice(instance->io_thread, -10);
 	wake_up_process(instance->io_thread);
 
@@ -490,34 +492,6 @@ int vc_sm_cma_vchi_free(struct sm_instance *handle, struct vc_sm_free_t *msg,
 {
 	return vc_sm_cma_vchi_send_msg(handle, VC_SM_MSG_TYPE_FREE,
 				   msg, sizeof(*msg), 0, 0, cur_trans_id, 0);
-}
-
-int vc_sm_cma_vchi_lock(struct sm_instance *handle,
-			struct vc_sm_lock_unlock_t *msg,
-			struct vc_sm_lock_result_t *result,
-			uint32_t *cur_trans_id)
-{
-	return vc_sm_cma_vchi_send_msg(handle, VC_SM_MSG_TYPE_LOCK,
-				   msg, sizeof(*msg), result, sizeof(*result),
-				   cur_trans_id, 1);
-}
-
-int vc_sm_cma_vchi_unlock(struct sm_instance *handle,
-			  struct vc_sm_lock_unlock_t *msg, u32 *cur_trans_id,
-			  uint8_t wait_reply)
-{
-	return vc_sm_cma_vchi_send_msg(handle, wait_reply ?
-				   VC_SM_MSG_TYPE_UNLOCK :
-				   VC_SM_MSG_TYPE_UNLOCK_NOANS, msg,
-				   sizeof(*msg), 0, 0, cur_trans_id,
-				   wait_reply);
-}
-
-int vc_sm_cma_vchi_resize(struct sm_instance *handle,
-			  struct vc_sm_resize_t *msg, uint32_t *cur_trans_id)
-{
-	return vc_sm_cma_vchi_send_msg(handle, VC_SM_MSG_TYPE_RESIZE,
-				   msg, sizeof(*msg), 0, 0, cur_trans_id, 1);
 }
 
 int vc_sm_cma_vchi_walk_alloc(struct sm_instance *handle)

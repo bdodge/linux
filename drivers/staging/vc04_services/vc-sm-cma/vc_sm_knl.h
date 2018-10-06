@@ -5,6 +5,8 @@
  *
  * Copyright: 2018, Raspberry Pi (Trading) Ltd
  *
+ * Based on vc_sm_defs.h from the vmcs_sm driver Copyright Broadcom Corporation.
+ *
  */
 
 #ifndef __VC_SM_KNL_H__INCLUDED__
