@@ -1942,8 +1942,11 @@ int vchiq_mmal_component_init(struct vchiq_mmal_instance *instance,
 	}
 
 	ret = create_component(instance, component, name);
-	if (ret < 0)
-		goto unlock;
+	if (ret < 0) {
+		pr_err("%s: failed to create component %d (Not enough GPU mem?)\n",
+		       __func__, ret);
+ 		goto unlock;
+	}
 
 	/* ports info needs gathering */
 	component->control.type = MMAL_PORT_TYPE_CONTROL;
