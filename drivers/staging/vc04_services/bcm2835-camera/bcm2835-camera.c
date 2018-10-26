@@ -640,6 +640,7 @@ static void stop_streaming(struct vb2_queue *vq)
 	struct vchiq_mmal_port *port = dev->capture.port;
 	struct vb2_v4l2_buffer *vb2;
 	struct vb2_mmal_buffer *buf;
+	unsigned long timeout;
 	int ret, i;
 
 	v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev, "%s: dev:%p\n",
