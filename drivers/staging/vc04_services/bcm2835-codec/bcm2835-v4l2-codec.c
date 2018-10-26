@@ -24,8 +24,7 @@
 #include <linux/timer.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/of_platform.h>
-//#include <linux/platform_device.h>
+#include <linux/platform_device.h>
 #include <linux/syscalls.h>
 
 #include <media/v4l2-mem2mem.h>
@@ -40,16 +39,22 @@
 #include "vchiq-mmal/mmal-parameters.h"
 #include "vchiq-mmal/mmal-vchiq.h"
 
-MODULE_DESCRIPTION("BCM2835 codec V4L2 driver");
-MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.org>");
-MODULE_LICENSE("GPL");
-MODULE_VERSION("0.0.1");
+/*
+ * Default /dev/videoN node numbers for decode and encode.
+ * Deliberately avoid the very low numbers as these are often taken by webcams
+ * etc, and simple apps tend to only go for /dev/video0.
+ */
+static int decode_video_nr = 10;
+module_param(decode_video_nr, int, 0644);
+MODULE_PARM_DESC(decode_video_nr, "decoder video device number");
+
+static int encode_video_nr = 11;
+module_param(encode_video_nr, int, 0644);
+MODULE_PARM_DESC(encode_video_nr, "encoder video device number");
 
 static unsigned int debug;
 module_param(debug, uint, 0644);
 MODULE_PARM_DESC(debug, "activates debug info (0-3)");
-
-#define BCM2835_V4L2_CODEC_MODULE_NAME "bcm2835-v4l2-codec"
 
 #define MIN_W 32
 #define MIN_H 32
@@ -64,13 +69,8 @@ MODULE_PARM_DESC(debug, "activates debug info (0-3)");
 #define MEM2MEM_CAPTURE		BIT(0)
 #define MEM2MEM_OUTPUT		BIT(1)
 
-#define MEM2MEM_NAME		"bcm2835_codec"
+#define MEM2MEM_NAME		"bcm2835-codec"
 
-/* Per queue */
-#define MEM2MEM_DEF_NUM_BUFS	VIDEO_MAX_FRAME
-
-/* Default transaction time in msec */
-#define MEM2MEM_DEF_TRANSTIME	400
 
 struct bcm2835_codec_fmt {
 	u32	fourcc;
@@ -79,46 +79,82 @@ struct bcm2835_codec_fmt {
 	u32	flags;
 	u32	mmal_fmt;
 	bool	decode_only;
+	bool	encode_only;
 	int	size_multiplier_x2;
 };
 
-/* Supported raw pixel formats. */
+/* Supported raw pixel formats. Those supported for both encode and decode
+ * must come first, with those only supported for decode coming after (there
+ * are no formats supported for encode only).
+ */
 static struct bcm2835_codec_fmt raw_formats[] = {
 	{
-		.fourcc	= V4L2_PIX_FMT_YUV420,
-		.depth	= 8,
-		.bytesperline_align = 32,
-		.flags = 0,
-		.mmal_fmt = MMAL_ENCODING_I420,
-		.size_multiplier_x2 = 3,
+		.fourcc			= V4L2_PIX_FMT_YUV420,
+		.depth			= 8,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_I420,
+		.size_multiplier_x2	= 3,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_YVU420,
-		.depth	= 8,
-		.bytesperline_align = 32,
-		.flags = 0,
-		.mmal_fmt = MMAL_ENCODING_YV12,
-		.size_multiplier_x2 = 3,
+		.fourcc			= V4L2_PIX_FMT_YVU420,
+		.depth			= 8,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_YV12,
+		.size_multiplier_x2	= 3,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_NV12,
-		.depth	= 8,
-		.bytesperline_align = 32,
-		.flags = 0,
-		.mmal_fmt = MMAL_ENCODING_NV12,
-		.size_multiplier_x2 = 3,
+		.fourcc			= V4L2_PIX_FMT_NV12,
+		.depth			= 8,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_NV12,
+		.size_multiplier_x2	= 3,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_NV21,
-		.depth	= 8,
-		.bytesperline_align = 32,
-		.flags = 0,
-		.mmal_fmt = MMAL_ENCODING_NV21,
-		.size_multiplier_x2 = 3,
+		.fourcc			= V4L2_PIX_FMT_NV21,
+		.depth			= 8,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_NV21,
+		.size_multiplier_x2	= 3,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_RGB565,
-		.depth	= 8,
-		.bytesperline_align = 32,
-		.flags = 0,
-		.mmal_fmt = MMAL_ENCODING_RGB16,
-		.size_multiplier_x2 = 4,
+		.fourcc			= V4L2_PIX_FMT_RGB565,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_RGB16,
+		.size_multiplier_x2	= 2,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_YUYV,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_YUYV,
+		.encode_only		= true,
+		.size_multiplier_x2	= 2,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_UYVY,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_UYVY,
+		.encode_only		= true,
+		.size_multiplier_x2	= 2,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_YVYU,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_YVYU,
+		.encode_only		= true,
+		.size_multiplier_x2	= 2,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_VYUY,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_VYUY,
+		.encode_only		= true,
+		.size_multiplier_x2	= 2,
 	},
 };
 
@@ -128,41 +164,39 @@ static struct bcm2835_codec_fmt raw_formats[] = {
  */
 static struct bcm2835_codec_fmt encoded_formats[] = {
 	{
-		.fourcc	= V4L2_PIX_FMT_H264,
-		.depth	= 0,
-		.flags = V4L2_FMT_FLAG_COMPRESSED,
-		.mmal_fmt = MMAL_ENCODING_H264,
-		.decode_only = false,
+		.fourcc			= V4L2_PIX_FMT_H264,
+		.depth			= 0,
+		.flags			= V4L2_FMT_FLAG_COMPRESSED,
+		.mmal_fmt		= MMAL_ENCODING_H264,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_MJPEG,
-		.depth	= 0,
-		.flags = V4L2_FMT_FLAG_COMPRESSED,
-		.mmal_fmt = MMAL_ENCODING_MJPEG,
-		.decode_only = false,
+		.fourcc			= V4L2_PIX_FMT_MJPEG,
+		.depth			= 0,
+		.flags			= V4L2_FMT_FLAG_COMPRESSED,
+		.mmal_fmt		= MMAL_ENCODING_MJPEG,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_MPEG4,
-		.depth	= 0,
-		.flags = V4L2_FMT_FLAG_COMPRESSED,
-		.mmal_fmt = MMAL_ENCODING_MP4V,
-		.decode_only = true,
+		.fourcc			= V4L2_PIX_FMT_MPEG4,
+		.depth			= 0,
+		.flags			= V4L2_FMT_FLAG_COMPRESSED,
+		.mmal_fmt		= MMAL_ENCODING_MP4V,
+		.decode_only		= true,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_H263,
-		.depth	= 0,
-		.flags = V4L2_FMT_FLAG_COMPRESSED,
-		.mmal_fmt = MMAL_ENCODING_H263,
-		.decode_only = true,
+		.fourcc			= V4L2_PIX_FMT_H263,
+		.depth			= 0,
+		.flags			= V4L2_FMT_FLAG_COMPRESSED,
+		.mmal_fmt		= MMAL_ENCODING_H263,
+		.decode_only		= true,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_MPEG2,
-		.depth	= 0,
-		.flags = V4L2_FMT_FLAG_COMPRESSED,
-		.mmal_fmt = MMAL_ENCODING_MP2V,
-		.decode_only = true,
+		.fourcc			= V4L2_PIX_FMT_MPEG2,
+		.depth			= 0,
+		.flags			= V4L2_FMT_FLAG_COMPRESSED,
+		.mmal_fmt		= MMAL_ENCODING_MP2V,
+		.decode_only		= true,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_VP8,
-		.depth	= 0,
-		.flags = V4L2_FMT_FLAG_COMPRESSED,
-		.mmal_fmt = MMAL_ENCODING_VP8,
-		.decode_only = true,
+		.fourcc			= V4L2_PIX_FMT_VP8,
+		.depth			= 0,
+		.flags			= V4L2_FMT_FLAG_COMPRESSED,
+		.mmal_fmt		= MMAL_ENCODING_VP8,
+		.decode_only		= true,
 	},
 	/*
 	 * This list couold include VP6 and Theorafor decode, but V4L2 doesn't
@@ -245,8 +279,15 @@ static struct bcm2835_codec_fmt *find_format(struct v4l2_format *f, bool decode,
 			break;
 	}
 
-	/* Some formats are only supported for decoding, not encoding. */
+	/*
+	 * Some compressed formats are only supported for decoding, not
+	 * encoding.
+	 */
 	if (!decode && fmts->list[k].decode_only)
+		return NULL;
+
+	/* Some pixel formats are only supported for encoding, not decoding. */
+	if (decode && fmts->list[k].encode_only)
 		return NULL;
 
 	if (k == fmts->num_entries)
@@ -294,6 +335,11 @@ struct bcm2835_codec_ctx {
 	int num_ip_buffers;
 	int num_op_buffers;
 	struct completion frame_cmplt;
+};
+
+struct bcm2835_codec_driver {
+	struct bcm2835_codec_dev *encode;
+	struct bcm2835_codec_dev *decode;
 };
 
 static inline struct bcm2835_codec_ctx *file2ctx(struct file *file)
@@ -435,13 +481,10 @@ static void ip_buffer_cb(struct vchiq_mmal_instance *instance,
 
 	if (status) {
 		/* error in transfer */
-		if (buf) {
+		if (buf)
 			/* there was a buffer with the error so return it */
-			v4l2_err(&ctx->dev->v4l2_dev, "%s: status is %d - ERROR\n",
-				 __func__, status);
 			vb2_buffer_done(&buf->m2m.vb.vb2_buf,
 					VB2_BUF_STATE_ERROR);
-		}
 		return;
 	}
 	if (mmal_buf->cmd) {
@@ -731,8 +774,11 @@ static int enum_fmt(struct v4l2_fmtdesc *f, bool decode, bool capture)
 		/* Format found */
 		/* Check format isn't a decode only format when encoding */
 		if (!decode &&
-		    fmts->list[f->index].flags & V4L2_FMT_FLAG_COMPRESSED &&
 		    fmts->list[f->index].decode_only)
+			return -EINVAL;
+		/* Check format isn't a decode only format when encoding */
+		if (decode &&
+		    fmts->list[f->index].encode_only)
 			return -EINVAL;
 
 		fmt = &fmts->list[f->index];
@@ -851,11 +897,6 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 		fmt = find_format(f, ctx->dev->decode, true);
 	}
 
-	f->fmt.pix.colorspace = ctx->colorspace;
-	f->fmt.pix.xfer_func = ctx->xfer_func;
-	f->fmt.pix.ycbcr_enc = ctx->ycbcr_enc;
-	f->fmt.pix.quantization = ctx->quant;
-
 	return vidioc_try_fmt(f, fmt);
 }
 
@@ -915,24 +956,20 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 		q_data->crop_height = requested_height;
 
 	/*
-	 * Required by v4l2-compliance that we copy the output queue colour
-	 * parameters to the capture port.
-	 * It's pretty meaningless for the decoder, and should be overwritten
-	 * when the codec has parsed the stream headers.
-	 * For the encoder it ought to be passed to the codec so that it's
-	 * encoded in the bitstream, but it hardly applies to the encoded
-	 * capture (encoded) stream.
+	 * Copying the behaviour of vicodec which retains a single set of
+	 * colorspace parameters for both input and output.
 	 */
-	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
-		ctx->colorspace = f->fmt.pix.colorspace;
-		ctx->xfer_func = f->fmt.pix.xfer_func;
-		ctx->ycbcr_enc = f->fmt.pix.ycbcr_enc;
-		ctx->quant = f->fmt.pix.quantization;
-	}
+	ctx->colorspace = f->fmt.pix.colorspace;
+	ctx->xfer_func = f->fmt.pix.xfer_func;
+	ctx->ycbcr_enc = f->fmt.pix.ycbcr_enc;
+	ctx->quant = f->fmt.pix.quantization;
 
 	/* All parameters should have been set correctly by try_fmt */
 	q_data->bytesperline = f->fmt.pix.bytesperline;
 	q_data->sizeimage = f->fmt.pix.sizeimage;
+
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Calulated bpl as %u, size %u\n",
+		 q_data->bytesperline, q_data->sizeimage);
 
 	setup_mmal_port_format(ctx, ctx->dev->decode, q_data, port);
 	ret = vchiq_mmal_port_set_format(ctx->dev->instance, port);
@@ -1136,6 +1173,101 @@ static int vidioc_subscribe_evt(struct v4l2_fh *fh,
 	}
 }
 
+static int bcm2835_codec_set_level_profile(struct bcm2835_codec_ctx *ctx,
+					   struct v4l2_ctrl *ctrl)
+{
+	struct mmal_parameter_video_profile param;
+	int param_size = sizeof(param);
+	int ret;
+
+	/*
+	 * Level and Profile are set via the same MMAL parameter.
+	 * Retrieve the current settings and amend the one that has changed.
+	 */
+	ret = vchiq_mmal_port_parameter_get(
+				ctx->dev->instance,
+				&ctx->component->output[0],
+				MMAL_PARAMETER_PROFILE,
+				&param,
+				&param_size);
+	if (ret)
+		return ret;
+
+	switch (ctrl->id) {
+	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+		switch (ctrl->val) {
+		case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
+			param.profile = MMAL_VIDEO_PROFILE_H264_BASELINE;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE:
+			param.profile =
+				MMAL_VIDEO_PROFILE_H264_CONSTRAINED_BASELINE;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
+			param.profile = MMAL_VIDEO_PROFILE_H264_MAIN;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
+			param.profile = MMAL_VIDEO_PROFILE_H264_HIGH;
+			break;
+		default:
+			/* Should never get here */
+			break;
+		}
+		break;
+
+	case V4L2_CID_MPEG_VIDEO_H264_LEVEL:
+		switch (ctrl->val) {
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_1;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1B:
+			param.level = MMAL_VIDEO_LEVEL_H264_1b;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_1:
+			param.level = MMAL_VIDEO_LEVEL_H264_11;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_2:
+			param.level = MMAL_VIDEO_LEVEL_H264_12;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_1_3:
+			param.level = MMAL_VIDEO_LEVEL_H264_13;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_2_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_2;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_2_1:
+			param.level = MMAL_VIDEO_LEVEL_H264_21;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_2_2:
+			param.level = MMAL_VIDEO_LEVEL_H264_22;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_3_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_3;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_3_1:
+			param.level = MMAL_VIDEO_LEVEL_H264_31;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_3_2:
+			param.level = MMAL_VIDEO_LEVEL_H264_32;
+			break;
+		case V4L2_MPEG_VIDEO_H264_LEVEL_4_0:
+			param.level = MMAL_VIDEO_LEVEL_H264_4;
+			break;
+		default:
+			/* Should never get here */
+			break;
+		}
+	}
+	ret = vchiq_mmal_port_parameter_set(
+				ctx->dev->instance,
+				&ctx->component->output[0],
+				MMAL_PARAMETER_PROFILE,
+				&param,
+				param_size);
+
+	return ret;
+}
+
 static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct bcm2835_codec_ctx *ctx =
@@ -1190,6 +1322,11 @@ static int bcm2835_codec_s_ctrl(struct v4l2_ctrl *ctrl)
 				MMAL_PARAMETER_INTRAPERIOD,
 				&ctrl->val,
 				sizeof(ctrl->val));
+		break;
+
+	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
+	case V4L2_CID_MPEG_VIDEO_H264_LEVEL:
+		ret = bcm2835_codec_set_level_profile(ctx, ctrl);
 		break;
 
 	default:
@@ -1725,7 +1862,6 @@ static int bcm2835_codec_open(struct file *file)
 		v4l2_err(&dev->v4l2_dev, "Mutex fail\n");
 		return -ERESTARTSYS;
 	}
-	v4l2_err(&dev->v4l2_dev, "%s: obtained mutex\n", __func__);
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
 		rc = -ENOMEM;
@@ -1856,10 +1992,32 @@ static int bcm2835_codec_open(struct file *file)
 				  V4L2_CID_MPEG_VIDEO_H264_I_PERIOD,
 				  0, 0x7FFFFFFF,
 				  1, 60);
-		//v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
-		//		V4L2_CID_MPEG_VIDEO_H264_LEVEL, 0, 1, 1, 0);
-		//v4l2_ctrl_new_std(hdl, &bcm2835_codec_ctrl_ops,
-		//		V4L2_CID_MPEG_VIDEO_H264_PROFILE, 0, 1, 1, 0);
+		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
+				       V4L2_CID_MPEG_VIDEO_H264_LEVEL,
+				       V4L2_MPEG_VIDEO_H264_LEVEL_4_2,
+				       ~(BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_0) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1B) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_1) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_2) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_3) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_0) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_1) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_2_2) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_0) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_1) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_3_2) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_0) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_1) |
+					 BIT(V4L2_MPEG_VIDEO_H264_LEVEL_4_2)),
+				       V4L2_MPEG_VIDEO_H264_LEVEL_4_0);
+		v4l2_ctrl_new_std_menu(hdl, &bcm2835_codec_ctrl_ops,
+				       V4L2_CID_MPEG_VIDEO_H264_PROFILE,
+				       V4L2_MPEG_VIDEO_H264_PROFILE_HIGH,
+				       ~(BIT(V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE) |
+					 BIT(V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE) |
+					 BIT(V4L2_MPEG_VIDEO_H264_PROFILE_MAIN) |
+					 BIT(V4L2_MPEG_VIDEO_H264_PROFILE_HIGH)),
+					V4L2_MPEG_VIDEO_H264_PROFILE_HIGH);
 		if (hdl->error) {
 			rc = hdl->error;
 			goto free_ctrl_handler;
@@ -1885,9 +2043,6 @@ static int bcm2835_codec_open(struct file *file)
 
 	v4l2_fh_add(&ctx->fh);
 	atomic_inc(&dev->num_inst);
-
-	v4l2_err(&dev->v4l2_dev, "Created instance: %p, m2m_ctx: %p\n",
-		 ctx, ctx->fh.m2m_ctx);
 
 	mutex_unlock(&dev->dev_mutex);
 	return 0;
@@ -1951,12 +2106,14 @@ static const struct v4l2_m2m_ops m2m_ops = {
 	.job_abort	= job_abort,
 };
 
-static int bcm2835_codec_probe(struct platform_device *pdev)
+static int bcm2835_codec_create(struct platform_device *pdev,
+				struct bcm2835_codec_dev **new_dev,
+				bool decode)
 {
 	struct bcm2835_codec_dev *dev;
 	struct video_device *vfd;
 	struct vchiq_mmal_instance *instance = NULL;
-	struct device_node *node = pdev->dev.of_node;
+	int video_nr;
 	int ret;
 
 	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
@@ -1965,8 +2122,7 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 
 	dev->pdev = pdev;
 
-	if (of_device_is_compatible(node, "raspberrypi,bcm2835-v4l2-decoder"))
-		dev->decode = true;
+	dev->decode = decode;
 
 	ret = v4l2_device_register(&pdev->dev, &dev->v4l2_dev);
 	if (ret)
@@ -1983,12 +2139,14 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 	if (dev->decode) {
 		v4l2_disable_ioctl(vfd, VIDIOC_ENCODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_TRY_ENCODER_CMD);
+		video_nr = decode_video_nr;
 	} else {
 		v4l2_disable_ioctl(vfd, VIDIOC_DECODER_CMD);
 		v4l2_disable_ioctl(vfd, VIDIOC_TRY_DECODER_CMD);
+		video_nr = encode_video_nr;
 	}
 
-	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
+	ret = video_register_device(vfd, VFL_TYPE_GRABBER, video_nr);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "Failed to register video device\n");
 		goto unreg_dev;
@@ -2000,7 +2158,7 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 	v4l2_info(&dev->v4l2_dev, "Device registered as /dev/video%d\n",
 		  vfd->num);
 
-	platform_set_drvdata(pdev, dev);
+	*new_dev = dev;
 
 	dev->m2m_dev = v4l2_m2m_init(&m2m_ops);
 	if (IS_ERR(dev->m2m_dev)) {
@@ -2014,8 +2172,8 @@ static int bcm2835_codec_probe(struct platform_device *pdev)
 		goto err_m2m;
 	dev->instance = instance;
 
-	v4l2_err(&dev->v4l2_dev, "Loaded V4L2 %s codec\n",
-		 dev->decode ? "decode" : "encode");
+	v4l2_info(&dev->v4l2_dev, "Loaded V4L2 %s codec\n",
+		  dev->decode ? "decode" : "encode");
 	return 0;
 
 err_m2m:
@@ -2027,39 +2185,72 @@ unreg_dev:
 	return ret;
 }
 
-static int bcm2835_codec_remove(struct platform_device *pdev)
+static int bcm2835_codec_destroy(struct bcm2835_codec_dev *dev)
 {
-	struct bcm2835_codec_dev *dev = platform_get_drvdata(pdev);
+	if (!dev)
+		return -ENODEV;
 
 	v4l2_info(&dev->v4l2_dev, "Removing " MEM2MEM_NAME);
 	v4l2_m2m_release(dev->m2m_dev);
-	//del_timer_sync(&dev->timer);
 	video_unregister_device(&dev->vfd);
 	v4l2_device_unregister(&dev->v4l2_dev);
 
 	return 0;
 }
 
-/*
- *   Register the driver with device tree
- */
+static int bcm2835_codec_probe(struct platform_device *pdev)
+{
+	struct bcm2835_codec_driver *drv;
+	int ret = 0;
 
-static const struct of_device_id bcm2835_codec_of_match[] = {
-	{.compatible = "raspberrypi,bcm2835-v4l2-decoder",},
-	{.compatible = "raspberrypi,bcm2835-v4l2-encoder",},
-	{ /* sentinel */ },
-};
+	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_KERNEL);
+	if (!drv)
+		return -ENOMEM;
 
-MODULE_DEVICE_TABLE(of, bcm2835_codec_of_match);
+	ret = bcm2835_codec_create(pdev, &drv->encode, false);
+	if (ret)
+		goto out;
+
+	ret = bcm2835_codec_create(pdev, &drv->decode, true);
+	if (ret)
+		goto out;
+
+	platform_set_drvdata(pdev, drv);
+
+	return 0;
+
+out:
+	if (drv->encode) {
+		bcm2835_codec_destroy(drv->encode);
+		drv->encode = NULL;
+	}
+	return ret;
+}
+
+static int bcm2835_codec_remove(struct platform_device *pdev)
+{
+	struct bcm2835_codec_driver *drv = platform_get_drvdata(pdev);
+
+	bcm2835_codec_destroy(drv->encode);
+
+	bcm2835_codec_destroy(drv->decode);
+
+	return 0;
+}
 
 static struct platform_driver bcm2835_v4l2_codec_driver = {
 	.probe = bcm2835_codec_probe,
 	.remove = bcm2835_codec_remove,
 	.driver = {
-		   .name = BCM2835_V4L2_CODEC_MODULE_NAME,
+		   .name = "bcm2835-codec",
 		   .owner = THIS_MODULE,
-		   .of_match_table = bcm2835_codec_of_match,
 		   },
 };
 
 module_platform_driver(bcm2835_v4l2_codec_driver);
+
+MODULE_DESCRIPTION("BCM2835 codec V4L2 driver");
+MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.org>");
+MODULE_LICENSE("GPL");
+MODULE_VERSION("0.0.1");
+MODULE_ALIAS("platform:bcm2835-codec");
