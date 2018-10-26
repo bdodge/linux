@@ -400,7 +400,7 @@ static int snd_bcm2835_alsa_probe(struct platform_device *pdev)
 
 	dev->coherent_dma_mask = DMA_BIT_MASK(32);
 	dev->dma_mask = &dev->coherent_dma_mask;
-	err = of_dma_configure(dev, NULL, true);
+	err = of_dma_configure(dev, NULL);
 	if (err) {
 		dev_err(dev, "Unable to setup DMA: %d\n", err);
 		return err;
