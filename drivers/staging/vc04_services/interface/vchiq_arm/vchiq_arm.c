@@ -3251,7 +3251,11 @@ static int vchiq_probe(struct platform_device *pdev)
 		MAJOR(vchiq_devid), MINOR(vchiq_devid));
 
 	bcm2835_camera = vchiq_register_child(pdev, "bcm2835-camera");
+	if (IS_ERR(bcm2835_camera))
+		bcm2835_camera = NULL;
 	bcm2835_audio = vchiq_register_child(pdev, "bcm2835_audio");
+	if (IS_ERR(bcm2835_audio))
+		bcm2835_audio = NULL;
 
 	return 0;
 
@@ -3264,6 +3268,7 @@ failed_platform_init:
 
 static int vchiq_remove(struct platform_device *pdev)
 {
+	platform_device_unregister(bcm2835_audio);
 	platform_device_unregister(bcm2835_camera);
 	vchiq_debugfs_deinit();
 	device_destroy(vchiq_class, vchiq_devid);
