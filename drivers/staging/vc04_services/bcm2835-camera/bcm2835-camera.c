@@ -387,8 +387,20 @@ static void buffer_cb(struct vchiq_mmal_instance *instance,
 			 ktime_to_ns(timestamp));
 		buf->vb.vb2_buf.timestamp = ktime_to_ns(timestamp);
 	} else {
-		buf->vb.vb2_buf.timestamp = ktime_get_ns();
+		if (dev->capture.last_timestamp) {
+			buf->vb.vb2_buf.timestamp = dev->capture.last_timestamp;
+			v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
+				 "Buffer time set as last timestamp - %lld",
+				 buf->vb.vb2_buf.timestamp);
+		} else {
+			buf->vb.vb2_buf.timestamp =
+				ktime_to_ns(dev->capture.kernel_start_ts);
+			v4l2_dbg(1, bcm2835_v4l2_debug, &dev->v4l2_dev,
+				 "Buffer time set as start timestamp - %lld",
+				 buf->vb.vb2_buf.timestamp);
+		}
 	}
+	dev->capture.last_timestamp = buf->vb.vb2_buf.timestamp;
 
 	vb2_set_plane_payload(&buf->vb.vb2_buf, 0, length);
 	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
@@ -553,6 +565,7 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	}
 
 	dev->capture.kernel_start_ts = ktime_get();
+	dev->capture.last_timestamp = 0;
 
 	/* enable the camera port */
 	dev->capture.port->cb_ctx = dev;
