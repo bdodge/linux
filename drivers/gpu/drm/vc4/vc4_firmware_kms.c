@@ -144,6 +144,13 @@ struct set_timings {
 #define TIMINGS_FLAGS_RGB_LIMITED	BIT(8)
 /* DVI monitor, therefore disable infoframes. Not set corresponds to HDMI. */
 #define TIMINGS_FLAGS_DVI		BIT(9)
+
+#define TIMINGS_FLAGS_3D_MASK		GENMASK(15, 12)
+#define TIMINGS_FLAGS_3D_NONE		(0 << 12)
+#define TIMINGS_FLAGS_3D_TB		(1 << 12)
+#define TIMINGS_FLAGS_3D_SBS_HALF	(2 << 12)
+#define TIMINGS_FLAGS_3D_FRAME_PACKING	(3 << 12)
+#define TIMINGS_FLAGS_3D_FRAME_SEQUENTIAL (4 << 12)
 };
 
 struct mailbox_set_mode {
@@ -919,20 +926,24 @@ static void vc4_crtc_mode_set_nofb(struct drm_crtc *crtc)
 		}
 	}
 
-	/*
-	FIXME: To implement
-	switch(mode->flag & DRM_MODE_FLAG_3D_MASK) {
+	switch (mode->flags & DRM_MODE_FLAG_3D_MASK) {
+	default:
 	case DRM_MODE_FLAG_3D_NONE:
+		mb.timings.flags |= TIMINGS_FLAGS_3D_NONE;
+		break;
 	case DRM_MODE_FLAG_3D_FRAME_PACKING:
+		mb.timings.flags |= TIMINGS_FLAGS_3D_FRAME_PACKING;
+		break;
 	case DRM_MODE_FLAG_3D_FIELD_ALTERNATIVE:
-	case DRM_MODE_FLAG_3D_LINE_ALTERNATIVE:
-	case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL:
-	case DRM_MODE_FLAG_3D_L_DEPTH:
-	case DRM_MODE_FLAG_3D_L_DEPTH_GFX_GFX_DEPTH:
+		mb.timings.flags |= TIMINGS_FLAGS_3D_FRAME_SEQUENTIAL;
+		break;
 	case DRM_MODE_FLAG_3D_TOP_AND_BOTTOM:
+		mb.timings.flags |= TIMINGS_FLAGS_3D_TB;
+		break;
 	case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF:
+		mb.timings.flags |= TIMINGS_FLAGS_3D_SBS_HALF;
+		break;
 	}
-	*/
 
 	ret = rpi_firmware_property_list(vc4->firmware, &mb, sizeof(mb));
 }
@@ -1038,6 +1049,17 @@ vc4_crtc_mode_valid(struct drm_crtc *crtc, const struct drm_display_mode *mode)
 		    mode->clock > fkms->cfg.max_pixel_clock[1])
 			return MODE_CLOCK_HIGH;
 		break;
+	}
+
+	switch (mode->flags & DRM_MODE_FLAG_3D_MASK) {
+	case DRM_MODE_FLAG_3D_NONE:
+	case DRM_MODE_FLAG_3D_FRAME_PACKING:
+	case DRM_MODE_FLAG_3D_FIELD_ALTERNATIVE:
+	case DRM_MODE_FLAG_3D_TOP_AND_BOTTOM:
+	case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF:
+		break;
+	default:
+		return MODE_NO_STEREO;
 	}
 
 	return MODE_OK;
@@ -1609,6 +1631,7 @@ vc4_fkms_connector_init(struct drm_device *dev, struct drm_encoder *encoder,
 		drm_connector_helper_add(connector,
 					 &vc4_fkms_connector_helper_funcs);
 		connector->interlace_allowed = 0;
+		connector->stereo_allowed = 1;
 	}
 
 	ret = drm_mode_create_tv_margin_properties(dev);
