@@ -368,6 +368,7 @@ struct vc4_fkms_plane {
 	dma_addr_t fbinfo_bus_addr;
 	u32 pitch;
 	struct mailbox_set_plane mb;
+	bool blank;
 };
 
 static inline struct vc4_fkms_plane *to_vc4_fkms_plane(struct drm_plane *plane)
@@ -375,10 +376,12 @@ static inline struct vc4_fkms_plane *to_vc4_fkms_plane(struct drm_plane *plane)
 	return (struct vc4_fkms_plane *)plane;
 }
 
-static int vc4_plane_set_blank(struct drm_plane *plane, bool blank)
+static int vc4_plane_set_blank(struct vc4_crtc *vc4_crtc,
+			       struct drm_plane *plane, bool blank)
 {
 	struct vc4_dev *vc4 = to_vc4_dev(plane->dev);
 	struct vc4_fkms_plane *vc4_plane = to_vc4_fkms_plane(plane);
+
 	struct mailbox_set_plane blank_mb = {
 		.tag = { RPI_FIRMWARE_SET_PLANE, sizeof(struct set_plane), 0 },
 		.plane = {
@@ -391,20 +394,37 @@ static int vc4_plane_set_blank(struct drm_plane *plane, bool blank)
 							"primary",
 							"cursor"
 						  };
+	unsigned long flags;
 	int ret;
 
-	DRM_DEBUG_ATOMIC("[PLANE:%d:%s] %s plane %s",
+	if (blank && vc4_plane->blank)
+		return 0;
+
+	DRM_DEBUG_ATOMIC("[PLANE:%d:%s] %s plane %s\n",
 			 plane->base.id, plane->name, plane_types[plane->type],
 			 blank ? "blank" : "unblank");
 
-	if (blank)
+	DRM_ERROR("vc4_crtc %px, plane %px, blank %u\n", vc4_crtc, plane, blank);
+//	spin_lock_irqsave(&plane->dev->event_lock, flags);	//Deadlocks with spinlocks. Why?
+	if (vc4_crtc->update_id == 0xFF)
+		vc4_crtc->update_id = 1;
+	else
+		vc4_crtc->update_id++;
+//	spin_lock_irqsave(&plane->dev->event_lock, flags);
+	DRM_ERROR("vc4_crtc %px, plane %px, blank %u - id %u \n", vc4_crtc, plane, blank, vc4_crtc->update_id);
+
+	vc4_plane->blank = blank;
+	if (blank) {
+		blank_mb.plane.update_id = vc4_crtc->update_id;
 		ret = rpi_firmware_property_list(vc4->firmware, &blank_mb,
 						 sizeof(blank_mb));
-	else
+	} else {
+		vc4_plane->mb.plane.update_id = vc4_crtc->update_id;
 		ret = rpi_firmware_property_list(vc4->firmware, &vc4_plane->mb,
 						 sizeof(vc4_plane->mb));
+	}
 
-	WARN_ONCE(ret, "%s: firmware call failed. Please update your firmware",
+	WARN_ONCE(ret, "%s: firmware call failed. Please update your firmware\n",
 		  __func__);
 	return ret;
 }
@@ -488,6 +508,7 @@ static void vc4_plane_atomic_update(struct drm_plane *plane,
 				    struct drm_plane_state *old_state)
 {
 	struct drm_plane_state *state = plane->state;
+	struct vc4_crtc *vc4_crtc = to_vc4_crtc(state->crtc);
 
 	/*
 	 * Do NOT set now, as we haven't checked if the crtc is active or not.
@@ -496,18 +517,8 @@ static void vc4_plane_atomic_update(struct drm_plane *plane,
 	 * If the CRTC is on (or going to be on) and we're enabled,
 	 * then unblank.  Otherwise, stay blank until CRTC enable.
 	 */
-	if (state->crtc->state->active) {
-		struct vc4_crtc *vc4_crtc = to_vc4_crtc(state->crtc);
-		struct vc4_fkms_plane *vc4_plane = to_vc4_fkms_plane(plane);
-
-		if (vc4_crtc->update_id == 0xFF)
-			vc4_crtc->update_id = 1;
-		else
-			vc4_crtc->update_id++;
-
-		vc4_plane->mb.plane.update_id = vc4_crtc->update_id;
-		vc4_plane_set_blank(plane, false);
-	}
+	if (state->crtc->state->active)
+		vc4_plane_set_blank(vc4_crtc, plane, false);
 }
 
 static void vc4_plane_atomic_disable(struct drm_plane *plane,
@@ -515,6 +526,7 @@ static void vc4_plane_atomic_disable(struct drm_plane *plane,
 {
 	struct drm_plane_state *state = plane->state;
 	struct vc4_fkms_plane *vc4_plane = to_vc4_fkms_plane(plane);
+	struct vc4_crtc *vc4_crtc = to_vc4_crtc(old_state->crtc);
 
 	DRM_DEBUG_ATOMIC("[PLANE:%d:%s] plane disable %dx%d@%d +%d,%d\n",
 			 plane->base.id, plane->name,
@@ -523,7 +535,7 @@ static void vc4_plane_atomic_disable(struct drm_plane *plane,
 			 vc4_plane->mb.plane.vc_image_type,
 			 state->crtc_x,
 			 state->crtc_y);
-	vc4_plane_set_blank(plane, true);
+	vc4_plane_set_blank(vc4_crtc, plane, true);
 }
 
 static bool plane_enabled(struct drm_plane_state *state)
@@ -995,6 +1007,7 @@ static void vc4_crtc_consume_event(struct drm_crtc *crtc)
 	WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 
 	spin_lock_irqsave(&dev->event_lock, flags);
+	DRM_ERROR("Grabbing update_id %u\n", vc4_crtc->update_id);
 	vc4_crtc->flip_update_id = vc4_crtc->update_id;
 	vc4_crtc->event = crtc->state->event;
 	crtc->state->event = NULL;
@@ -1003,6 +1016,7 @@ static void vc4_crtc_consume_event(struct drm_crtc *crtc)
 
 static void vc4_crtc_enable(struct drm_crtc *crtc, struct drm_crtc_state *old_state)
 {
+	struct vc4_crtc *vc4_crtc = to_vc4_crtc(crtc);
 	struct drm_plane *plane;
 
 	DRM_DEBUG_KMS("[CRTC:%d] vblanks on.\n",
@@ -1013,7 +1027,8 @@ static void vc4_crtc_enable(struct drm_crtc *crtc, struct drm_crtc_state *old_st
 	/* Unblank the planes (if they're supposed to be displayed). */
 	drm_atomic_crtc_for_each_plane(plane, crtc)
 		if (plane->state->fb)
-			vc4_plane_set_blank(plane, plane->state->visible);
+			vc4_plane_set_blank(vc4_crtc, plane,
+					    plane->state->visible);
 }
 
 static enum drm_mode_status
@@ -1105,14 +1120,25 @@ static void vc4_crtc_handle_page_flip(struct vc4_crtc *vc4_crtc,
 	unsigned long flags;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
-	if (vc4_crtc->event &&
-	    (!update || update == vc4_crtc->flip_update_id)) {
-		drm_crtc_send_vblank_event(crtc, vc4_crtc->event);
-		vc4_crtc->event = NULL;
-		drm_crtc_vblank_put(crtc);
-	} else if (vc4_crtc->event) {
-		DRM_ERROR("Dropping update as update %u and flip_up_id %u",
-			  update, vc4_crtc->flip_update_id);
+	if (vc4_crtc->event) {
+		bool flipped = false;
+
+		if (update) {
+			unsigned int diff = (256 + update - vc4_crtc->flip_update_id) & 0xFF;
+			if (diff < 50)
+				flipped = true;
+		} else {
+			flipped = true;
+		}
+		if (flipped) {
+			drm_crtc_send_vblank_event(crtc, vc4_crtc->event);
+			vc4_crtc->event = NULL;
+			drm_crtc_vblank_put(crtc);
+		} else if (vc4_crtc->event) {
+			unsigned int diff = (256 + update - vc4_crtc->flip_update_id) & 0xFF;
+			DRM_ERROR("Dropping update as update %u and flip_up_id %u, diff %u",
+			  update, vc4_crtc->flip_update_id, diff);
+		}
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
@@ -1184,6 +1210,7 @@ static int vc4_page_flip(struct drm_crtc *crtc,
 	}
 
 	spin_lock_irqsave(&dev->event_lock, spinlock_flags);
+	DRM_ERROR("Grabbing update_id %u\n", vc4_crtc->update_id);
 	vc4_crtc->flip_update_id = vc4_crtc->update_id;
 	spin_unlock_irqrestore(&dev->event_lock, spinlock_flags);
 
