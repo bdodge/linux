@@ -82,6 +82,33 @@
 	((__u32)(a) | ((__u32)(b) << 8) | ((__u32)(c) << 16) | ((__u32)(d) << 24))
 #define v4l2_fourcc_be(a, b, c, d)	(v4l2_fourcc(a, b, c, d) | (1U << 31))
 
+/**
+ * v4l2_fourcc_conv - Printf fourcc conversion specifiers for V4L2 formats
+ *
+ * Use as part of the format string. The values are obtained using
+ * @v4l2_fourcc_args macro.
+ *
+ * Example ("format" is the V4L2 pixelformat in __u32):
+ *
+ * printf("V4L2 format is: " v4l2_fourcc_conv "\n", v4l2_fourcc_args(format);
+ */
+#define v4l2_fourcc_conv "%c%c%c%c%s"
+
+/**
+ * v4l2_fourcc_args - Arguments for V4L2 fourcc format conversion
+ *
+ * @fourcc: V4L2 pixelformat, as in __u32
+ *
+ * Yields to a comma-separated list of arguments for printf that matches with
+ * conversion specifiers provided by @v4l2_fourcc_conv.
+ *
+ * Note that v4l2_fourcc_args reuses fourcc, so this can't be an expression
+ * with side-effects.
+ */
+#define v4l2_fourcc_args(fourcc)					\
+	(fourcc) & 0x7f, ((fourcc) >> 8) & 0x7f, ((fourcc) >> 16) & 0x7f, \
+	((fourcc) >> 24) & 0x7f, ((fourcc) & (1 << 31) ? "-BE" : "")
+
 /*
  *	E N U M S
  */
