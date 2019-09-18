@@ -158,6 +158,12 @@ struct mailbox_set_mode {
 	struct set_timings timings;
 };
 
+struct mailbox_hdmi_hotplug {
+      uint8_t display;
+      uint8_t status;
+      uint8_t padding[2];
+};
+
 static const struct vc_image_format {
 	u32 drm;	/* DRM_FORMAT_* */
 	u32 vc_image;	/* VC_IMAGE_* */
@@ -404,14 +410,14 @@ static int vc4_plane_set_blank(struct vc4_crtc *vc4_crtc,
 			 plane->base.id, plane->name, plane_types[plane->type],
 			 blank ? "blank" : "unblank");
 
-	DRM_ERROR("vc4_crtc %px, plane %px, blank %u\n", vc4_crtc, plane, blank);
+//	DRM_ERROR("vc4_crtc %px, plane %px, blank %u\n", vc4_crtc, plane, blank);
 //	spin_lock_irqsave(&plane->dev->event_lock, flags);	//Deadlocks with spinlocks. Why?
 	if (vc4_crtc->update_id == 0xFF)
 		vc4_crtc->update_id = 1;
 	else
 		vc4_crtc->update_id++;
 //	spin_lock_irqsave(&plane->dev->event_lock, flags);
-	DRM_ERROR("vc4_crtc %px, plane %px, blank %u - id %u \n", vc4_crtc, plane, blank, vc4_crtc->update_id);
+	//DRM_ERROR("vc4_crtc %px, plane %px, blank %u - id %u \n", vc4_crtc, plane, blank, vc4_crtc->update_id);
 
 	vc4_plane->blank = blank;
 	if (blank) {
@@ -1295,8 +1301,22 @@ static const struct of_device_id vc4_firmware_kms_dt_match[] = {
 static enum drm_connector_status
 vc4_fkms_connector_detect(struct drm_connector *connector, bool force)
 {
-	DRM_DEBUG_KMS("connector detect.\n");
-	return connector_status_connected;
+	struct vc4_fkms_connector *fkms_connector =
+					to_vc4_fkms_connector(connector);
+	struct vc4_dev *vc4 = fkms_connector->vc4_dev;
+	struct mailbox_hdmi_hotplug hpd = { fkms_connector->display_number,
+					    0 };
+	int ret;
+
+	ret = rpi_firmware_property(vc4->firmware,
+				    RPI_FIRMWARE_GET_DISPLAY_HPD, &hpd,
+				    sizeof(hpd));
+
+	DRM_DEBUG_KMS("connector detect. ret %d, status %u\n", ret, hpd.status);
+
+	return (ret || hpd.status) ? 
+			connector_status_connected :
+			connector_status_disconnected;
 }
 
 /* Queries the firmware to populate a drm_mode structure for this display */
