@@ -2106,8 +2106,8 @@ int vchiq_mmal_init(struct vchiq_mmal_instance **out_instance)
 {
 	int status;
 	struct vchiq_mmal_instance *instance;
-	static VCHI_CONNECTION_T *vchi_connection;
-	VCHI_INSTANCE_T vchi_instance;
+	static struct vchi_connection *vchi_connection;
+	struct vchi_instance vchi_instance;
 	struct service_creation params = {
 		.version		= VCHI_VERSION_EX(VC_MMAL_VER, VC_MMAL_MIN_VER),
 		.service_id		= VC_MMAL_SERVER_NAME,
