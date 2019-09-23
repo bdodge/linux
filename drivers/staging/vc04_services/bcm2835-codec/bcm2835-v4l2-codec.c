@@ -1121,9 +1121,9 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 	bool update_capture_port = false;
 	int ret;
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Setting format for type %d, wxh: %dx%d, fmt: " V4L2_FOURCC_CONV ", size %u\n",
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Setting format for type %d, wxh: %dx%d, fmt: " v4l2_fourcc_conv ", size %u\n",
 		 f->type, f->fmt.pix_mp.width, f->fmt.pix_mp.height,
-		 V4L2_FOURCC_CONV_ARGS(f->fmt.pix_mp.pixelformat),
+		 v4l2_fourcc_args(f->fmt.pix_mp.pixelformat),
 		 f->fmt.pix_mp.plane_fmt[0].sizeimage);
 
 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, f->type);
