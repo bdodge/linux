@@ -1795,12 +1795,12 @@ static int vidioc_encoder_cmd(struct file *file, void *priv,
 static const struct v4l2_ioctl_ops bcm2835_codec_ioctl_ops = {
 	.vidioc_querycap	= vidioc_querycap,
 
-	.vidioc_enum_fmt_vid_cap_mplane = vidioc_enum_fmt_vid_cap,
+	.vidioc_enum_fmt_vid_cap	= vidioc_enum_fmt_vid_cap,
 	.vidioc_g_fmt_vid_cap_mplane	= vidioc_g_fmt_vid_cap,
 	.vidioc_try_fmt_vid_cap_mplane	= vidioc_try_fmt_vid_cap,
 	.vidioc_s_fmt_vid_cap_mplane	= vidioc_s_fmt_vid_cap,
 
-	.vidioc_enum_fmt_vid_out_mplane = vidioc_enum_fmt_vid_out,
+	.vidioc_enum_fmt_vid_out	= vidioc_enum_fmt_vid_out,
 	.vidioc_g_fmt_vid_out_mplane	= vidioc_g_fmt_vid_out,
 	.vidioc_try_fmt_vid_out_mplane	= vidioc_try_fmt_vid_out,
 	.vidioc_s_fmt_vid_out_mplane	= vidioc_s_fmt_vid_out,
