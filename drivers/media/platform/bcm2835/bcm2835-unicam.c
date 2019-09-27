@@ -1770,9 +1770,11 @@ unicam_async_bound(struct v4l2_async_notifier *notifier,
 		int k;
 
 		memset(&mbus_code, 0, sizeof(mbus_code));
+		mbus_code.pad = 0;
+		mbus_code.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 		mbus_code.index = j;
 		ret = v4l2_subdev_call(subdev, pad, enum_mbus_code,
-				       NULL, &mbus_code);
+				       0, &mbus_code);
 		if (ret < 0) {
 			unicam_dbg(2, unicam,
 				   "subdev->enum_mbus_code idx %d returned %d - continue\n",
