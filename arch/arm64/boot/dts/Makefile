@@ -28,3 +28,8 @@ subdir-y += synaptics
 subdir-y += ti
 subdir-y += xilinx
 subdir-y += zte
+
+# Enable fixups to support overlays on BCM2835 platforms
+ifeq ($(CONFIG_ARCH_BCM2835),y)
+	DTC_FLAGS ?= -@
+endif

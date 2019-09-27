@@ -1286,3 +1286,8 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
 	aspeed-bmc-opp-zaius.dtb \
 	aspeed-bmc-portwell-neptune.dtb \
 	aspeed-bmc-quanta-q71l.dtb
+
+# Enable fixups to support overlays on BCM2835 platforms
+ifeq ($(CONFIG_ARCH_BCM2835),y)
+	DTC_FLAGS ?= -@
+endif
