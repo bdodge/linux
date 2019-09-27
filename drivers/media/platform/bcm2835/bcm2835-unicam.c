@@ -2018,6 +2018,10 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 	}
 
 	peripheral_data_lanes = ep->bus.mipi_csi2.num_data_lanes;
+	//Hack - I can't scan the remote endpoint, so assume local endpoint matches.
+	// Why such needless duplication?
+	dev->max_data_lanes = peripheral_data_lanes;
+	dev->bus_flags = ep->bus.mipi_csi2.flags;
 
 	sensor_node = of_graph_get_remote_port_parent(ep_node);
 	if (!sensor_node) {
@@ -2070,11 +2074,14 @@ static int of_unicam_connect_subdevs(struct unicam_device *dev)
 		dev->max_data_lanes = 1;
 		dev->bus_flags = ep->bus.mipi_csi1.strobe;
 		break;
+#if 0
+		/* Why can I not test the remote endpoint anymore? */
 	default:
 		/* Unsupported bus type */
 		unicam_err(dev, "sub-device %s is not a CSI2 or CCP2 device %d\n",
 			   sensor_node->name, ep->bus_type);
 		goto cleanup_exit;
+#endif
 	}
 
 	/* Store bus type - CSI2 or CCP2 */
