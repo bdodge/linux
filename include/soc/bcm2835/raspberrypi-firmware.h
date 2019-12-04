@@ -154,8 +154,6 @@ enum rpi_firmware_property_tag {
 	RPI_FIRMWARE_SET_TIMING =                             0x00048017,
 	RPI_FIRMWARE_GET_DISPLAY_CFG =                        0x00040018,
 	RPI_FIRMWARE_SET_DISPLAY_POWER =		      0x00048019,
-	RPI_FIRMWARE_GET_DISPLAY_HPD =                        0x0004001a,
-
 	RPI_FIRMWARE_GET_COMMAND_LINE =                       0x00050001,
 	RPI_FIRMWARE_GET_DMA_CHANNELS =                       0x00060001,
 };
