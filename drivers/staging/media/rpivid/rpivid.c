@@ -518,44 +518,15 @@ static const struct rpivid_variant sun50i_h6_rpivid_variant = {
 	.quirks		= RPIVID_QUIRK_NO_DMA_OFFSET,
 	.mod_rate	= 600000000,
 };
+#endif
 
 static const struct of_device_id rpivid_dt_match[] = {
 	{
-		.compatible = "allwinner,sun4i-a10-video-engine",
-		.data = &sun4i_a10_rpivid_variant,
-	},
-	{
-		.compatible = "allwinner,sun5i-a13-video-engine",
-		.data = &sun5i_a13_rpivid_variant,
-	},
-	{
-		.compatible = "allwinner,sun7i-a20-video-engine",
-		.data = &sun7i_a20_rpivid_variant,
-	},
-	{
-		.compatible = "allwinner,sun8i-a33-video-engine",
-		.data = &sun8i_a33_rpivid_variant,
-	},
-	{
-		.compatible = "allwinner,sun8i-h3-video-engine",
-		.data = &sun8i_h3_rpivid_variant,
-	},
-	{
-		.compatible = "allwinner,sun50i-a64-video-engine",
-		.data = &sun50i_a64_rpivid_variant,
-	},
-	{
-		.compatible = "allwinner,sun50i-h5-video-engine",
-		.data = &sun50i_h5_rpivid_variant,
-	},
-	{
-		.compatible = "allwinner,sun50i-h6-video-engine",
-		.data = &sun50i_h6_rpivid_variant,
+		.compatible = "raspberrypi,rpivid-vid-decoder",
 	},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, rpivid_dt_match);
-#endif
 
 static struct platform_driver rpivid_driver = {
 	.probe		= rpivid_probe,
@@ -563,6 +534,7 @@ static struct platform_driver rpivid_driver = {
 	.driver		= {
 		.name		= RPIVID_NAME,
 		.owner = THIS_MODULE,
+		.of_match_table	= of_match_ptr(rpivid_dt_match),
 	},
 };
 module_platform_driver(rpivid_driver);
