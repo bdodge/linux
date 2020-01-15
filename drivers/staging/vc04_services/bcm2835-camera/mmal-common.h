@@ -16,7 +16,7 @@
 #ifndef MMAL_COMMON_H
 #define MMAL_COMMON_H
 
-#define MMAL_FOURCC(a, b, c, d) ((a) | (b << 8) | (c << 16) | (d << 24))
+#define MMAL_FOURCC(a, b, c, d) ((a) | ((b) << 8) | ((c) << 16) | ((d) << 24))
 #define MMAL_MAGIC MMAL_FOURCC('m', 'm', 'a', 'l')
 
 /** Special value signalling that time is not known */
