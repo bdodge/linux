@@ -1816,10 +1816,10 @@ int vchiq_mmal_init(struct vchiq_mmal_instance **out_instance)
 	struct vchiq_mmal_instance *instance;
 	static struct vchi_instance_handle *vchi_instance;
 	struct service_creation params = {
-		.version		= VCHI_VERSION_EX(VC_MMAL_VER, VC_MMAL_MIN_VER),
-		.service_id		= VC_MMAL_SERVER_NAME,
-		.callback		= service_callback,
-		.callback_param		= NULL,
+		.version	= VCHI_VERSION_EX(VC_MMAL_VER, VC_MMAL_MIN_VER),
+		.service_id	= VC_MMAL_SERVER_NAME,
+		.callback	= service_callback,
+		.callback_param	= NULL,
 	};
 
 	/* compile time checks to ensure structure size as they are
