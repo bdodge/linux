@@ -12,6 +12,7 @@ vchiq-objs := \
 
 obj-$(CONFIG_SND_BCM2835)	+= bcm2835-audio/
 obj-$(CONFIG_VIDEO_BCM2835)	+= bcm2835-camera/
+obj-$(CONFIG_BCM2835_MMAL_VCHIQ) += mmal-vchiq/
 
 ccflags-y += -D__VCCOREVER__=0x04000000
 
