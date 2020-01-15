@@ -1,0 +1,10 @@
+1) Support SELECTION API to define crop region on the image for encode.
+
+Particularly for resolutions that aren't a multiple of the macroblock
+size, the codec will report a resolution that is a multiple of the macroblock
+size (it has to have the memory to decode into), and then a different crop
+region within that buffer.
+The most common example is 1080P, where the buffer will be 1920x1088 with a
+crop region of 1920x1080.
+
+2) Extend the ISP support to add more of the controls.
