@@ -82,7 +82,7 @@ static const char *const port_action_type_names[] = {
 #if defined(FULL_MSG_DUMP)
 #define DBG_DUMP_MSG(MSG, MSG_LEN, TITLE)				\
 	do {								\
-		pr_debug(TITLE" type:%s(%d) length:%d\n",		\
+		pr_debug(TITLE " type:%s(%d) length:%d\n",		\
 			 msg_type_names[(MSG)->h.type],			\
 			 (MSG)->h.type, (MSG_LEN));			\
 		print_hex_dump(KERN_DEBUG, "<<h: ", DUMP_PREFIX_OFFSET,	\
@@ -96,7 +96,7 @@ static const char *const port_action_type_names[] = {
 #else
 #define DBG_DUMP_MSG(MSG, MSG_LEN, TITLE)				\
 	{								\
-		pr_debug(TITLE" type:%s(%d) length:%d\n",		\
+		pr_debug(TITLE " type:%s(%d) length:%d\n",		\
 			 msg_type_names[(MSG)->h.type],			\
 			 (MSG)->h.type, (MSG_LEN));			\
 	}
