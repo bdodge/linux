@@ -167,6 +167,7 @@ struct mmal_msg_context {
 };
 
 struct vchiq_mmal_instance {
+	struct vchi_instance_handle *vchi_instance;
 	struct vchi_service_handle *handle;
 
 	/* ensure serialised access to service */
@@ -2017,6 +2018,8 @@ int vchiq_mmal_finalise(struct vchiq_mmal_instance *instance)
 
 	idr_destroy(&instance->context_map);
 
+	vchi_disconnect(instance->vchi_instance);
+
 	kfree(instance);
 
 	return status;
@@ -2027,7 +2030,7 @@ int vchiq_mmal_init(struct vchiq_mmal_instance **out_instance)
 {
 	int status;
 	struct vchiq_mmal_instance *instance;
-	static struct vchi_instance_handle *vchi_instance;
+	struct vchi_instance_handle *vchi_instance;
 	struct service_creation params = {
 		.version	= VCHI_VERSION_EX(VC_MMAL_VER, VC_MMAL_MIN_VER),
 		.service_id	= VC_MMAL_SERVER_NAME,
@@ -2066,6 +2069,8 @@ int vchiq_mmal_init(struct vchiq_mmal_instance **out_instance)
 
 	if (!instance)
 		return -ENOMEM;
+
+	instance->vchi_instance = vchi_instance;
 
 	mutex_init(&instance->vchiq_mutex);
 
