@@ -10,13 +10,15 @@
  * Copyright (C) 2018 Paul Kocialkowski <paul.kocialkowski@bootlin.com>
  * Copyright (C) 2018 Bootlin
  */
-
-#include <linux/platform_device.h>
-#include <linux/of_reserved_mem.h>
-#include <linux/of_device.h>
+#include <linux/clk.h>
+#include <linux/component.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
-#include <linux/clk.h>
+#include <linux/io.h>
+#include <linux/of_reserved_mem.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 
@@ -204,25 +206,26 @@ int rpivid_hw_probe(struct rpivid_dev *dev)
 {
 	int irq_dec;
 	int ret = 0;
+	struct resource *res;
 
 	ictl_init(&dev->ic_active1);
 	ictl_init(&dev->ic_active2);
 
-	dev->base_irq = devm_platform_ioremap_resource(dev->pdev, 0);
-	if (IS_ERR(dev->base_irq)) {
-		dev_err(dev->dev, "Failed to map IRQ registers\n");
+	res = platform_get_resource_byname(dev->pdev, IORESOURCE_MEM, "intc");
+	if (!res)
+		return -ENODEV;
 
-		ret = PTR_ERR(dev->base_irq);
-		goto err_sram;
-	}
+	dev->base_irq = devm_ioremap(dev->dev, res->start, resource_size(res));
+	if (IS_ERR(dev->base_irq))
+		return PTR_ERR(dev->base_irq);
 
-	dev->base_h265 = devm_platform_ioremap_resource(dev->pdev, 1);
-	if (IS_ERR(dev->base_h265)) {
-		dev_err(dev->dev, "Failed to map H265 registers\n");
+	res = platform_get_resource_byname(dev->pdev, IORESOURCE_MEM, "hevc");
+	if (!res)
+		return -ENODEV;
 
-		ret = PTR_ERR(dev->base_h265);
-		goto err_sram;
-	}
+	dev->base_h265 = devm_ioremap(dev->dev, res->start, resource_size(res));
+	if (IS_ERR(dev->base_h265))
+		return PTR_ERR(dev->base_h265);
 
 	// Disable IRQs & reset anything pending
 	{
@@ -246,7 +249,6 @@ int rpivid_hw_probe(struct rpivid_dev *dev)
 		return ret;
 	}
 #endif
-err_sram:
 	return ret;
 }
 
