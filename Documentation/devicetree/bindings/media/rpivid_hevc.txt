@@ -1,0 +1,21 @@
+Device-tree bindings for the HEVC decoder block found on the Broadcom BCM2711
+SoC, as used on the Raspberry Pi 4.
+
+Required properties:
+- compatible		: must be one of the following compatibles:
+			- "raspberrypi,rpivid-vid-decoder"
+- reg			: intc, hevc, h264, vp9
+- reg-name		: intc, hevc, h264, vp9 registers
+- interrupts		: should contain IRQ line for the block;
+
+Example:
+
+video-codec@7eb10000 {
+	compatible = "raspberrypi,rpivid-vid-decoder";
+	reg = <0x0 0x7eb10000 0x1000>,	/* INTC */
+	      <0x0 0x7eb00000 0x10000>; /* HEVC */
+	reg-names = "intc",
+		    "hevc";
+
+	interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
+};
