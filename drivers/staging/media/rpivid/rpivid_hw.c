@@ -261,9 +261,10 @@ void rpivid_hw_irq_active2_irq(struct rpivid_dev *dev,
 
 int rpivid_hw_probe(struct rpivid_dev *dev)
 {
+	struct resource *res;
+	__u32 irq_stat;
 	int irq_dec;
 	int ret = 0;
-	struct resource *res;
 
 	ictl_init(&dev->ic_active1);
 	ictl_init(&dev->ic_active2);
@@ -285,14 +286,10 @@ int rpivid_hw_probe(struct rpivid_dev *dev)
 		return PTR_ERR(dev->base_h265);
 
 	// Disable IRQs & reset anything pending
-	{
-		__u32 irq_stat;
-
-		irq_write(dev, 0, ARG_IC_ICTRL_ACTIVE1_EN_SET |
-				  ARG_IC_ICTRL_ACTIVE2_EN_SET);
-		irq_stat = irq_read(dev, 0);
-		irq_write(dev, 0, irq_stat);
-	}
+	irq_write(dev, 0,
+		  ARG_IC_ICTRL_ACTIVE1_EN_SET | ARG_IC_ICTRL_ACTIVE2_EN_SET);
+	irq_stat = irq_read(dev, 0);
+	irq_write(dev, 0, irq_stat);
 
 #if !OPT_DEBUG_POLL_IRQ
 	irq_dec = platform_get_irq(dev->pdev, 0);
