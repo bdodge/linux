@@ -25,6 +25,15 @@
 #include "rpivid_hw.h"
 #include "rpivid_dec.h"
 
+/*
+ * Default /dev/videoN node number.
+ * Deliberately avoid the very low numbers as these are often taken by webcams
+ * etc, and simple apps tend to only go for /dev/video0.
+ */
+static int video_nr = 19;
+module_param(video_nr, int, 0644);
+MODULE_PARM_DESC(video_nr, "decoder video device number");
+
 static const struct rpivid_control rpivid_controls[] = {
 	{
 		.cfg = {
@@ -348,7 +357,7 @@ static int rpivid_probe(struct platform_device *pdev)
 	dev->mdev.ops = &rpivid_m2m_media_ops;
 	dev->v4l2_dev.mdev = &dev->mdev;
 
-	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
+	ret = video_register_device(vfd, VFL_TYPE_GRABBER, video_nr);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "Failed to register video device\n");
 		goto err_m2m;
