@@ -63,8 +63,8 @@ int rpivid_prepare_dst_format(struct v4l2_pix_format *pix_fmt)
 	unsigned int bytesperline = pix_fmt->bytesperline;
 
 	switch (pix_fmt->pixelformat) {
-	/* For SAND formats set bytesperline to column height (stride2) */
-	case V4L2_PIX_FMT_SAND8:
+	/* For column formats set bytesperline to column height (stride2) */
+	case V4L2_PIX_FMT_NV12_COL128:
 		/* Width rounds up to columns */
 		width = ALIGN(min(width, RPIVID_MAX_WIDTH), 128);
 
@@ -82,7 +82,7 @@ int rpivid_prepare_dst_format(struct v4l2_pix_format *pix_fmt)
 		sizeimage = constrain2x(sizeimage, bytesperline * width);
 		break;
 
-	case V4L2_PIX_FMT_SAND30:
+	case V4L2_PIX_FMT_NV12_10_COL128:
 		/* width in pixels (3 pels = 4 bytes) rounded to 128 byte
 		 * columns
 		 */
@@ -209,14 +209,14 @@ static u32 pixelformat_from_sps(const struct v4l2_ctrl_hevc_sps * const sps,
 	if (!is_sps_set(sps)) {
 		/* Treat this as an error? Ffor now return both */
 		if (index == 0)
-			pf = V4L2_PIX_FMT_SAND8;
+			pf = V4L2_PIX_FMT_NV12_COL128;
 		else if (index == 1)
-			pf = V4L2_PIX_FMT_SAND30;
+			pf = V4L2_PIX_FMT_NV12_10_COL128;
 	} else if (index == 0 && rpivid_hevc_validate_sps(sps)) {
 		if (sps->bit_depth_luma_minus8 == 0)
-			pf = V4L2_PIX_FMT_SAND8;
+			pf = V4L2_PIX_FMT_NV12_COL128;
 		else if (sps->bit_depth_luma_minus8 == 2)
-			pf = V4L2_PIX_FMT_SAND30;
+			pf = V4L2_PIX_FMT_NV12_10_COL128;
 	}
 
 	return pf;

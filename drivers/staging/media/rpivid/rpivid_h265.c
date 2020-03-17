@@ -1594,17 +1594,17 @@ static void rpivid_h265_setup(struct rpivid_ctx *ctx, struct rpivid_run *run)
 		}
 		if (s->sps.bit_depth_luma_minus8 == 0) {
 			if (ctx->dst_fmt.pixelformat !=
-			    V4L2_PIX_FMT_SAND8) {
+						V4L2_PIX_FMT_NV12_COL128) {
 				v4l2_err(&dev->v4l2_dev,
-					 "Pixel format %#x != SAND8 for 8-bit output",
+					 "Pixel format %#x != NV12_COL128 for 8-bit output",
 					 ctx->dst_fmt.pixelformat);
 				goto fail;
 			}
 		} else if (s->sps.bit_depth_luma_minus8 == 2) {
 			if (ctx->dst_fmt.pixelformat !=
-			    V4L2_PIX_FMT_SAND30) {
+						V4L2_PIX_FMT_NV12_10_COL128) {
 				v4l2_err(&dev->v4l2_dev,
-					 "Pixel format %#x != SAND30 for 10-bit output",
+					 "Pixel format %#x != NV12_10_COL128 for 10-bit output",
 					 ctx->dst_fmt.pixelformat);
 				goto fail;
 			}
