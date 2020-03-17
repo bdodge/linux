@@ -77,8 +77,8 @@ static void sched_claim(struct rpivid_dev * const dev,
 /* Should only ever be called from its own IRQ cb so no lock required */
 static void pre_thread(struct rpivid_dev *dev,
 		       struct rpivid_hw_irq_ent *ient,
-		       rpivid_irq_callback cb, void * v,
-		       struct rpivid_hw_irq_ctrl * ictl)
+		       rpivid_irq_callback cb, void *v,
+		       struct rpivid_hw_irq_ctrl *ictl)
 {
 	ient->cb = cb;
 	ient->v = v;
@@ -187,10 +187,11 @@ static irqreturn_t rpivid_irq_irq(int irq, void *data)
 		IRQ_WAKE_THREAD : IRQ_HANDLED;
 }
 
-static void do_thread(struct rpivid_dev * const dev, struct rpivid_hw_irq_ctrl *const ictl)
+static void do_thread(struct rpivid_dev * const dev,
+		      struct rpivid_hw_irq_ctrl *const ictl)
 {
 	unsigned long flags;
-	struct rpivid_hw_irq_ent * ient = NULL;
+	struct rpivid_hw_irq_ent *ient = NULL;
 
 	spin_lock_irqsave(&ictl->lock, flags);
 
@@ -202,7 +203,7 @@ static void do_thread(struct rpivid_dev * const dev, struct rpivid_hw_irq_ctrl *
 
 	spin_unlock_irqrestore(&ictl->lock, flags);
 
-	if (ient != NULL) {
+	if (ient) {
 		ient->cb(dev, ient->v);
 
 		sched_claim(dev, ictl);

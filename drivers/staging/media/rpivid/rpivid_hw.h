@@ -73,7 +73,6 @@ struct rpivid_hw_irq_ent {
 #define RPI_COLSTRIDE 0x803C
 #define RPI_CURRPOC 0x8040
 
-
 /*
  * Write a general register value
  * Order is unimportant
@@ -86,7 +85,7 @@ static inline void apb_write(const struct rpivid_dev * const dev,
 
 /* Write the final register value that actually starts the phase */
 static inline void apb_write_final(const struct rpivid_dev * const dev,
-			     const unsigned int offset, const u32 val)
+				   const unsigned int offset, const u32 val)
 {
 	writel(val, dev->base_h265 + offset);
 }
@@ -104,7 +103,7 @@ static inline void irq_write(const struct rpivid_dev * const dev,
 }
 
 static inline u32 irq_read(const struct rpivid_dev * const dev,
-			     const unsigned int offset)
+			   const unsigned int offset)
 {
 	return readl(dev->base_irq + offset);
 }
@@ -117,8 +116,8 @@ static inline void apb_write_vc_addr(const struct rpivid_dev * const dev,
 }
 
 static inline void apb_write_vc_addr_final(const struct rpivid_dev * const dev,
-				     const unsigned int offset,
-				     const dma_addr_t a)
+					   const unsigned int offset,
+					   const dma_addr_t a)
 {
 	apb_write_final(dev, offset, (u32)(a >> 6));
 }
@@ -283,8 +282,8 @@ void rpivid_hw_irq_active1_irq(struct rpivid_dev *dev,
 			       rpivid_irq_callback irq_cb, void *ctx);
 /* May only be called in irq cb */
 void rpivid_hw_irq_active1_thread(struct rpivid_dev *dev,
-                                struct rpivid_hw_irq_ent *ient,
-                                rpivid_irq_callback thread_cb, void * ctx);
+				  struct rpivid_hw_irq_ent *ient,
+				  rpivid_irq_callback thread_cb, void *ctx);
 
 
 /* Auto release once all CBs called */

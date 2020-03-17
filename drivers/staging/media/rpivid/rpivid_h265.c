@@ -25,16 +25,16 @@
 #if DEBUG_TRACE_EXECUTION
 #define xtrace_in(dev_, de_)\
 	v4l2_info(&(dev_)->v4l2_dev, "%s[%d]: in\n",   __func__,\
-		  (de_) == NULL ? -1 : (de_)->decode_order);
+		  (de_) == NULL ? -1 : (de_)->decode_order)
 #define xtrace_ok(dev_, de_)\
 	v4l2_info(&(dev_)->v4l2_dev, "%s[%d]: ok\n",   __func__,\
-		  (de_) == NULL ? -1 : (de_)->decode_order);
+		  (de_) == NULL ? -1 : (de_)->decode_order)
 #define xtrace_fin(dev_, de_)\
 	v4l2_info(&(dev_)->v4l2_dev, "%s[%d]: finish\n", __func__,\
-		  (de_) == NULL ? -1 : (de_)->decode_order);
+		  (de_) == NULL ? -1 : (de_)->decode_order)
 #define xtrace_fail(dev_, de_)\
 	v4l2_info(&(dev_)->v4l2_dev, "%s[%d]: FAIL\n", __func__,\
-		  (de_) == NULL ? -1 : (de_)->decode_order);
+		  (de_) == NULL ? -1 : (de_)->decode_order)
 #else
 #define xtrace_in(dev_, de_)
 #define xtrace_ok(dev_, de_)
@@ -80,7 +80,7 @@ static int gptr_realloc_new(struct rpivid_dev * const dev,
 	if (size == gptr->size)
 		return 0;
 
-	if (gptr->ptr != NULL)
+	if (gptr->ptr)
 		dma_free_attrs(dev->dev, gptr->size, gptr->ptr,
 			       gptr->addr, gptr->attrs);
 
@@ -88,11 +88,12 @@ static int gptr_realloc_new(struct rpivid_dev * const dev,
 	gptr->size = size;
 	gptr->ptr = dma_alloc_attrs(dev->dev, gptr->size,
 				    &gptr->addr, GFP_KERNEL, gptr->attrs);
-	return gptr->ptr == NULL ? -ENOMEM : 0;
+	return gptr->ptr ? 0 : -ENOMEM;
 }
 
 /* floor(log2(x)) */
-static unsigned int log2_size(size_t x) {
+static unsigned int log2_size(size_t x)
+{
 	unsigned int n = 0;
 	if (x & ~0xffff) {
 		n += 16;
@@ -113,7 +114,8 @@ static unsigned int log2_size(size_t x) {
 	return (x & ~1) ? n + 1 : n;
 }
 
-static size_t round_up_size(const size_t x) {
+static size_t round_up_size(const size_t x)
+{
 	/* Admit no size < 256 */
 	const unsigned int n = x < 256 ? 8 : log2_size(x) - 1;
 
@@ -415,14 +417,13 @@ static void aux_q_uninit(struct rpivid_ctx *const ctx)
 
 //////////////////////////////////////////////////////////////////////////////
 
-
 /*
-  * Initialisation process for context variables (CABAC init)
-  * see H.265 9.3.2.2
-  *
-  * N.B. If comparing with FFmpeg note that this h/w uses slightly different
-  * offsets to FFmpegs array
-  */
+ * Initialisation process for context variables (CABAC init)
+ * see H.265 9.3.2.2
+ *
+ * N.B. If comparing with FFmpeg note that this h/w uses slightly different
+ * offsets to FFmpegs array
+ */
 
 /* Actual number of values */
 #define RPI_PROB_VALS 154U
@@ -1333,6 +1334,7 @@ static int frame_end(struct rpivid_dev *const dev,
 
 	if (!de->cmd_copy_gptr->ptr || cmd_size > de->cmd_copy_gptr->size) {
 		size_t cmd_alloc = round_up_size(cmd_size);
+
 		if (gptr_realloc_new(dev, de->cmd_copy_gptr, cmd_alloc)) {
 			v4l2_err(&dev->v4l2_dev,
 				 "Alloc cmd buffer (%d): FAILED\n", cmd_alloc);
@@ -1976,7 +1978,8 @@ static void phase2_claimed(struct rpivid_dev *const dev, void *v)
 
 static void phase1_claimed(struct rpivid_dev *const dev, void *v);
 
-static void phase1_thread(struct rpivid_dev *const dev, void *v) {
+static void phase1_thread(struct rpivid_dev *const dev, void *v)
+{
 	struct rpivid_dec_env *const de = v;
 	struct rpivid_ctx *const ctx = de->ctx;
 
@@ -2033,7 +2036,8 @@ static void cb_phase1(struct rpivid_dev *const dev, void *v)
 		v4l2_info(&dev->v4l2_dev, "%s: Post wait: %#x\n",
 			  __func__, de->p1_status);
 
-		if (de->p1_status < 0) goto fail;
+		if (de->p1_status < 0)
+			goto fail;
 
 		/* Need to realloc - push onto a thread rather than IRQ */
 		rpivid_hw_irq_active1_thread(dev, &de->irq_ent,
@@ -2042,8 +2046,8 @@ static void cb_phase1(struct rpivid_dev *const dev, void *v)
 	}
 
 	/* After the frame-buf is detached it must be returned but from
-	 * this point onward (phase2_claimed, cb_phase2) there are no error paths
-	 * so the return at the end of cb_phase2 is all that is needed
+	 * this point onward (phase2_claimed, cb_phase2) there are no error
+	 * paths so the return at the end of cb_phase2 is all that is needed
 	 */
 	de->frame_buf = v4l2_m2m_cap_buf_detach(dev->m2m_dev, ctx->fh.m2m_ctx);
 	if (!de->frame_buf) {
@@ -2086,18 +2090,17 @@ static void phase1_claimed(struct rpivid_dev *const dev, void *v)
 	xtrace_in(dev, de);
 
 	de->pu_base_vc = pu_gptr->addr;
-	de->pu_stride =  ALIGN_DOWN(pu_gptr->size / de->pic_height_in_ctbs_y, 64);
+	de->pu_stride =
+		ALIGN_DOWN(pu_gptr->size / de->pic_height_in_ctbs_y, 64);
 
 	de->coeff_base_vc = coeff_gptr->addr;
-	de->coeff_stride = ALIGN_DOWN(coeff_gptr->size / de->pic_height_in_ctbs_y,
-				      64);
+	de->coeff_stride =
+		ALIGN_DOWN(coeff_gptr->size / de->pic_height_in_ctbs_y, 64);
 
 	apb_write_vc_addr(dev, RPI_PUWBASE, de->pu_base_vc);
 	apb_write_vc_len(dev, RPI_PUWSTRIDE, de->pu_stride);
 	apb_write_vc_addr(dev, RPI_COEFFWBASE, de->coeff_base_vc);
 	apb_write_vc_len(dev, RPI_COEFFWSTRIDE, de->coeff_stride);
-
-	//	v4l2_info(&dev->v4l2_dev, "%s: Pre trigger\n", __func__);
 
 	// Trigger command FIFO
 	apb_write(dev, RPI_CFNUM, de->cmd_len);
