@@ -25,7 +25,7 @@ being in raster order.
 V4L2_PIX_FMT_NV12_10_COL128
 Follows the same pattern as ``V4L2_PIX_FMT_NV21_COL128`` with 128 byte, but is
 a 10bit format with 3 10-bit samples being packed into 4 bytes. Each 128 byte
-wide column therefore contains samples for 96 pixels.
+wide column therefore contains 96 samples.
 
 
 Description
@@ -54,6 +54,7 @@ the start of each column.
 .. flat-table::
     :header-rows:  0
     :stub-columns: 0
+    :widths: 12 12 12 12 12 4 12 12 12 12
 
     * - start + 0:
       - Y'\ :sub:`0,0`
@@ -151,21 +152,21 @@ the start of each column.
       - Y'\ :sub:`0,253`
       - Y'\ :sub:`0,254`
       - Y'\ :sub:`0,255`
+    * - ...
+      - ...
+      - ...
+      - ...
+      - ...
+      - ...
+      - ...
+      - ...
 
 V4L2_PIX_FMT_NV12_10_COL128 uses the same 128 byte column structure, but
 encodes 10-bit YUV.
 3 10-bit values are packed into 4 bytes as bits 9:0, 19:10, and 29:20, with
 bits 30 & 31 unused. For the luma plane, bits 9:0 are Y0, 19:10 are Y1, and
-29:20 are Y2. For the chroma plane it needs to be considered 6 values packed
-in 8 bytes, with
-  63:62: Unused
-  61:52: V2
-  51:42: U2
-  41:32: V1
-  31:30: Unused
-  29:20: U1
-  19:10: V0
-  9:0: U0
+29:20 are Y2. For the chroma plane the samples always come in pairs of Cr
+and Cb, so it needs to be considered 6 values packed in 8 bytes.
 
 Bit-packed representation.
 
@@ -178,15 +179,12 @@ Bit-packed representation.
 .. flat-table::
     :header-rows:  0
     :stub-columns: 0
-    :widths: 8 8 8 8 64
+    :widths: 8 8 8 8
 
     * - Y'\ :sub:`00[7:0]`
       - Y'\ :sub:`01[5:0] (bits 7--2)` Y'\ :sub:`00[9:8]`\ (bits 1--0)
       - Y'\ :sub:`02[3:0] (bits 7--4)` Y'\ :sub:`01[9:6]`\ (bits 3--0)
       - unused (bits 7--6)` Y'\ :sub:`02[9:4]`\ (bits 5--0)
-
-.. raw:: latex
-
 
 .. raw:: latex
 
@@ -197,16 +195,16 @@ Bit-packed representation.
 .. flat-table::
     :header-rows:  0
     :stub-columns: 0
-    :widths: 8 8 8 8 64
+    :widths: 12 12 12 12 12 12 12 12
 
-    * - Cb'\ :sub:`00[7:0]`
-      - Cr'\ :sub:`00[5:0] (bits 7--2)` Cb'\ :sub:`00[9:8]`\ (bits 1--0)
-      - Cb'\ :sub:`01[3:0] (bits 7--4)` Cr'\ :sub:`00[9:6]`\ (bits 3--0)
-      - unused (bits 7--6)` Cb'\ :sub:`02[9:4]`\ (bits 5--0)
-      - Cr'\ :sub:`01[7:0]`
-      - Cb'\ :sub:`02[5:0] (bits 7--2)` Cr'\ :sub:`01[9:8]`\ (bits 1--0)
-      - Cr'\ :sub:`02[3:0] (bits 7--4)` Cb'\ :sub:`02[9:6]`\ (bits 3--0)
-      - unused (bits 7--6)` Cr'\ :sub:`02[9:4]`\ (bits 5--0)
+    * - Cb\ :sub:`00[7:0]`
+      - Cr\ :sub:`00[5:0]`\ (bits 7--2) Cb\ :sub:`00[9:8]`\ (bits 1--0)
+      - Cb\ :sub:`01[3:0]`\ (bits 7--4) Cr\ :sub:`00[9:6]`\ (bits 3--0)
+      - unused (bits 7--6) Cb\ :sub:`02[9:4]`\ (bits 5--0)
+      - Cr\ :sub:`01[7:0]`
+      - Cb\ :sub:`02[5:0]`\ (bits 7--2) Cr\ :sub:`01[9:8]`\ (bits 1--0)
+      - Cr\ :sub:`02[3:0]`\ (bits 7--4) Cb\ :sub:`02[9:6]`\ (bits 3--0)
+      - unused (bits 7--6) Cr\ :sub:`02[9:4]`\ (bits 5--0)
 
 .. raw:: latex
 
