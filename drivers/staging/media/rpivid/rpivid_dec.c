@@ -68,12 +68,12 @@ void rpivid_device_run(void *priv)
 
 	v4l2_m2m_buf_copy_metadata(run.src, run.dst, true);
 
-	dev->dec_ops[ctx->current_codec]->setup(ctx, &run);
+	dev->dec_ops->setup(ctx, &run);
 
 	/* Complete request(s) controls if needed. */
 
 	if (src_req)
 		v4l2_ctrl_request_complete(src_req, &ctx->hdl);
 
-	dev->dec_ops[ctx->current_codec]->trigger(ctx);
+	dev->dec_ops->trigger(ctx);
 }

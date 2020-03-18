@@ -34,33 +34,29 @@ static int video_nr = 19;
 module_param(video_nr, int, 0644);
 MODULE_PARM_DESC(video_nr, "decoder video device number");
 
-static const struct rpivid_control rpivid_controls[] = {
+static const struct rpivid_control rpivid_ctrls[] = {
 	{
 		.cfg = {
 			.id	= V4L2_CID_MPEG_VIDEO_HEVC_SPS,
 		},
-		.codec		= RPIVID_CODEC_H265,
 		.required	= true,
 	},
 	{
 		.cfg = {
 			.id	= V4L2_CID_MPEG_VIDEO_HEVC_PPS,
 		},
-		.codec		= RPIVID_CODEC_H265,
 		.required	= true,
 	},
 	{
 		.cfg = {
 			.id = V4L2_CID_MPEG_VIDEO_HEVC_SCALING_MATRIX,
 		},
-		.codec		= RPIVID_CODEC_H265,
 		.required	= false,
 	},
 	{
 		.cfg = {
 			.id	= V4L2_CID_MPEG_VIDEO_HEVC_SLICE_PARAMS,
 		},
-		.codec		= RPIVID_CODEC_H265,
 		.required	= true,
 	},
 	{
@@ -69,7 +65,6 @@ static const struct rpivid_control rpivid_controls[] = {
 			.max	= V4L2_MPEG_VIDEO_HEVC_DECODE_MODE_SLICE_BASED,
 			.def	= V4L2_MPEG_VIDEO_HEVC_DECODE_MODE_SLICE_BASED,
 		},
-		.codec		= RPIVID_CODEC_H265,
 		.required	= false,
 	},
 	{
@@ -78,12 +73,11 @@ static const struct rpivid_control rpivid_controls[] = {
 			.max	= V4L2_MPEG_VIDEO_HEVC_START_CODE_NONE,
 			.def	= V4L2_MPEG_VIDEO_HEVC_START_CODE_NONE,
 		},
-		.codec		= RPIVID_CODEC_H265,
 		.required	= false,
 	},
 };
 
-#define RPIVID_CONTROLS_COUNT	ARRAY_SIZE(rpivid_controls)
+#define rpivid_ctrls_COUNT	ARRAY_SIZE(rpivid_ctrls)
 
 void *rpivid_find_control_data(struct rpivid_ctx *ctx, u32 id)
 {
@@ -103,26 +97,26 @@ static int rpivid_init_ctrls(struct rpivid_dev *dev, struct rpivid_ctx *ctx)
 	unsigned int ctrl_size;
 	unsigned int i;
 
-	v4l2_ctrl_handler_init(hdl, RPIVID_CONTROLS_COUNT);
+	v4l2_ctrl_handler_init(hdl, rpivid_ctrls_COUNT);
 	if (hdl->error) {
 		v4l2_err(&dev->v4l2_dev,
 			 "Failed to initialize control handler\n");
 		return hdl->error;
 	}
 
-	ctrl_size = sizeof(ctrl) * RPIVID_CONTROLS_COUNT + 1;
+	ctrl_size = sizeof(ctrl) * rpivid_ctrls_COUNT + 1;
 
 	ctx->ctrls = kzalloc(ctrl_size, GFP_KERNEL);
 	if (!ctx->ctrls)
 		return -ENOMEM;
 
-	for (i = 0; i < RPIVID_CONTROLS_COUNT; i++) {
-		ctrl = v4l2_ctrl_new_custom(hdl, &rpivid_controls[i].cfg,
+	for (i = 0; i < rpivid_ctrls_COUNT; i++) {
+		ctrl = v4l2_ctrl_new_custom(hdl, &rpivid_ctrls[i].cfg,
 					    NULL);
 		if (hdl->error) {
 			v4l2_err(&dev->v4l2_dev,
 				 "Failed to create new custom control id=%#x\n",
-				 rpivid_controls[i].cfg.id);
+				 rpivid_ctrls[i].cfg.id);
 
 			v4l2_ctrl_handler_free(hdl);
 			kfree(ctx->ctrls);
@@ -180,13 +174,13 @@ static int rpivid_request_validate(struct media_request *req)
 		return -ENOENT;
 	}
 
-	for (i = 0; i < RPIVID_CONTROLS_COUNT; i++) {
-		if (rpivid_controls[i].codec != ctx->current_codec ||
-		    !rpivid_controls[i].required)
+	for (i = 0; i < rpivid_ctrls_COUNT; i++) {
+		if (!rpivid_ctrls[i].required)
 			continue;
 
-		ctrl_test = v4l2_ctrl_request_hdl_ctrl_find(hdl,
-							    rpivid_controls[i].cfg.id);
+		ctrl_test =
+			v4l2_ctrl_request_hdl_ctrl_find(hdl,
+							rpivid_ctrls[i].cfg.id);
 		if (!ctrl_test) {
 			v4l2_info(&ctx->dev->v4l2_dev,
 				  "Missing required codec control\n");
@@ -322,7 +316,7 @@ static int rpivid_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	dev->dec_ops[RPIVID_CODEC_H265] = &rpivid_dec_ops_h265;
+	dev->dec_ops = &rpivid_dec_ops_h265;
 
 	mutex_init(&dev->dev_mutex);
 

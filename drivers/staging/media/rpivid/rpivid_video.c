@@ -207,7 +207,7 @@ static u32 pixelformat_from_sps(const struct v4l2_ctrl_hevc_sps * const sps,
 
 	// Use width 0 as a signifier of unsetness
 	if (!is_sps_set(sps)) {
-		/* Treat this as an error? Ffor now return both */
+		/* Treat this as an error? For now return both */
 		if (index == 0)
 			pf = V4L2_PIX_FMT_NV12_COL128;
 		else if (index == 1)
@@ -492,18 +492,11 @@ static int rpivid_start_streaming(struct vb2_queue *vq, unsigned int count)
 	struct rpivid_dev *dev = ctx->dev;
 	int ret = 0;
 
-	switch (ctx->src_fmt.pixelformat) {
-	case V4L2_PIX_FMT_HEVC_SLICE:
-		ctx->current_codec = RPIVID_CODEC_H265;
-		break;
-
-	default:
+	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_HEVC_SLICE)
 		return -EINVAL;
-	}
 
-	if (V4L2_TYPE_IS_OUTPUT(vq->type) &&
-	    dev->dec_ops[ctx->current_codec]->start)
-		ret = dev->dec_ops[ctx->current_codec]->start(ctx);
+	if (V4L2_TYPE_IS_OUTPUT(vq->type) && dev->dec_ops->start)
+		ret = dev->dec_ops->start(ctx);
 
 	if (ret)
 		rpivid_queue_cleanup(vq, VB2_BUF_STATE_QUEUED);
@@ -516,9 +509,8 @@ static void rpivid_stop_streaming(struct vb2_queue *vq)
 	struct rpivid_ctx *ctx = vb2_get_drv_priv(vq);
 	struct rpivid_dev *dev = ctx->dev;
 
-	if (V4L2_TYPE_IS_OUTPUT(vq->type) &&
-	    dev->dec_ops[ctx->current_codec]->stop)
-		dev->dec_ops[ctx->current_codec]->stop(ctx);
+	if (V4L2_TYPE_IS_OUTPUT(vq->type) && dev->dec_ops->stop)
+		dev->dec_ops->stop(ctx);
 
 	rpivid_queue_cleanup(vq, VB2_BUF_STATE_ERROR);
 }

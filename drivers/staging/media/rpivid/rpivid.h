@@ -33,11 +33,6 @@
 
 #define RPIVID_SRC_PIXELFORMAT_DEFAULT	V4L2_PIX_FMT_HEVC_SLICE
 
-enum rpivid_codec {
-	RPIVID_CODEC_H265,
-	RPIVID_CODEC_LAST,
-};
-
 enum rpivid_irq_status {
 	RPIVID_IRQ_NONE,
 	RPIVID_IRQ_ERROR,
@@ -46,7 +41,6 @@ enum rpivid_irq_status {
 
 struct rpivid_control {
 	struct v4l2_ctrl_config cfg;
-	enum rpivid_codec	codec;
 	unsigned char		required:1;
 };
 
@@ -93,7 +87,6 @@ struct rpivid_ctx {
 
 	struct v4l2_pix_format		src_fmt;
 	struct v4l2_pix_format		dst_fmt;
-	enum rpivid_codec		current_codec;
 	int dst_fmt_set;
 
 	struct v4l2_ctrl_handler	hdl;
@@ -165,7 +158,7 @@ struct rpivid_dev {
 	struct platform_device	*pdev;
 	struct device		*dev;
 	struct v4l2_m2m_dev	*m2m_dev;
-	struct rpivid_dec_ops	*dec_ops[RPIVID_CODEC_LAST];
+	struct rpivid_dec_ops	*dec_ops;
 
 	/* Device file mutex */
 	struct mutex		dev_mutex;
