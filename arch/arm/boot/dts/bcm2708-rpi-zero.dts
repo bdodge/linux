@@ -71,7 +71,7 @@
 	};
 };
 
-&i2c0 {
+&i2c0if {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pins>;
 	clock-frequency = <100000>;

@@ -55,14 +55,14 @@
 	};
 
 	fragment@2 {
-		target = <&i2c10>;
+		target = <&i2c0>;
 		__overlay__ {
 			status = "okay";
 		};
 	};
 
 	fragment@3 {
-		target = <&i2c10mux>;
+		target = <&i2c0mux>;
 		__overlay__ {
 			status = "okay";
 		};

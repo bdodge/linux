@@ -4,7 +4,7 @@
 #include "bcm2709-rpi.dtsi"
 #include "bcm283x-rpi-smsc9514.dtsi"
 #include "bcm283x-rpi-csi1-2lane.dtsi"
-#include "bcm283x-rpi-i2c10mux_0_28.dtsi"
+#include "bcm283x-rpi-i2c0mux_0_28.dtsi"
 
 / {
 	compatible = "raspberrypi,2-model-b-rev2", "brcm,bcm2837";
@@ -20,6 +20,11 @@
 	spi0_cs_pins: spi0_cs_pins {
 		brcm,pins = <8 7>;
 		brcm,function = <1>; /* output */
+	};
+
+	i2c0_pins: i2c0 {
+		brcm,pins = <0 1>;
+		brcm,function = <4>;
 	};
 
 	i2c1_pins: i2c1 {
@@ -64,8 +69,12 @@
 	};
 };
 
-&i2c10 {
+&i2c0if {
 	clock-frequency = <100000>;
+};
+
+&i2c0mux {
+	pinctrl-0 = <&i2c0_pins>;
 };
 
 &i2c1 {

@@ -340,7 +340,7 @@
 			status = "disabled";
 		};
 
-		i2c10: i2c@7e205000 {
+		i2c0if: i2c@7e205000 {
 			compatible = "brcm,bcm2835-i2c";
 			reg = <0x7e205000 0x200>;
 			interrupts = <2 21>;
@@ -350,12 +350,12 @@
 			status = "disabled";
 		};
 
-		i2c10mux: i2c10mux {
+		i2c0mux: i2c0mux {
 			compatible = "i2c-mux-pinctrl";
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			i2c-parent = <&i2c10>;
+			i2c-parent = <&i2c0if>;
 
 			pinctrl-names = "i2c0", "i2c_csi_dsi";
 

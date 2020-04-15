@@ -1376,7 +1376,7 @@ Name:   imx219
 Info:   Sony IMX219 camera module.
         Uses Unicam 1, which is the standard camera connector on most Pi
         variants.
-Load:   dtoverlay=imx219,<param>=<val>
+Load:   dtoverlay=imx219
 Params: <None>
 
 
@@ -1441,7 +1441,7 @@ Name:   irs1125
 Info:   Infineon irs1125 TOF camera module.
         Uses Unicam 1, which is the standard camera connector on most Pi
         variants.
-Load:   dtoverlay=irs1125,<param>=<val>
+Load:   dtoverlay=irs1125
 Params: <None>
 
 
@@ -1727,7 +1727,7 @@ Name:   ov5647
 Info:   Omnivision OV5647 camera module.
         Uses Unicam 1, which is the standard camera connector on most Pi
         variants.
-Load:   dtoverlay=ov5647,<param>=<val>
+Load:   dtoverlay=ov5647
 Params: <None>
 
 

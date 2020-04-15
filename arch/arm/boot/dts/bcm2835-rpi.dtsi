@@ -46,13 +46,13 @@
 	};
 };
 
-&i2c10 {
+&i2c0if {
 	pinctrl-names = "default";
 	status = "okay";
 	clock-frequency = <100000>;
 };
 
-&i2c10mux {
+&i2c0mux {
 	pinctrl-0 = <&i2c0_gpio0>;
 	/* pinctrl-1 varies based on platform */
 	status = "okay";
