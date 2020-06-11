@@ -38,6 +38,8 @@ enum imx290_clk_index {
 #define IMX290_BLKLEVEL_LOW 0x300a
 #define IMX290_BLKLEVEL_HIGH 0x300b
 #define IMX290_GAIN 0x3014
+#define IMX290_VMAX_LOW 0x3018
+#define IMX290_VMAX_MAX 0x3fff
 #define IMX290_HMAX_LOW 0x301c
 #define IMX290_HMAX_HIGH 0x301d
 #define IMX290_HMAX_MIN 2200 /* Min of 2200 pixels = 60fps */
@@ -67,6 +69,7 @@ struct imx290_mode {
 	u32 width;
 	u32 height;
 	u32 hmax;
+	u32 vmax;
 	u8 link_freq_index;
 
 	const struct imx290_regval *mode_data;
@@ -100,6 +103,7 @@ struct imx290 {
 	struct v4l2_ctrl *link_freq;
 	struct v4l2_ctrl *pixel_rate;
 	struct v4l2_ctrl *hblank;
+	struct v4l2_ctrl *vblank;
 
 	struct mutex lock;
 };
@@ -133,8 +137,6 @@ static const char * const imx290_test_pattern_menu[] = {
 
 static const struct imx290_regval imx290_global_init_settings[] = {
 	{ 0x3007, 0x00 },
-	{ 0x3018, 0x65 },
-	{ 0x3019, 0x04 },
 	{ 0x301a, 0x00 },
 	{ 0x303a, 0x0c },
 	{ 0x3040, 0x00 },
@@ -419,6 +421,7 @@ static const struct imx290_mode imx290_modes_2lanes[] = {
 		.width = 1920,
 		.height = 1080,
 		.hmax = 0x0898,
+		.vmax = 0x0465,
 		.link_freq_index = FREQ_INDEX_1080P,
 		.mode_data = imx290_1080p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_1080p_common_settings),
@@ -434,6 +437,7 @@ static const struct imx290_mode imx290_modes_2lanes[] = {
 		.width = 1280,
 		.height = 720,
 		.hmax = 0x0ce4,
+		.vmax = 0x02ee,
 		.link_freq_index = FREQ_INDEX_720P,
 		.mode_data = imx290_720p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_720p_common_settings),
@@ -452,6 +456,7 @@ static const struct imx290_mode imx290_modes_4lanes[] = {
 		.width = 1920,
 		.height = 1080,
 		.hmax = 0x0898,
+		.vmax = 0x0465,
 		.link_freq_index = FREQ_INDEX_1080P,
 		.mode_data = imx290_1080p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_1080p_common_settings),
@@ -467,6 +472,7 @@ static const struct imx290_mode imx290_modes_4lanes[] = {
 		.width = 1280,
 		.height = 720,
 		.hmax = 0x0ce4,
+		.vmax = 0x02ee,
 		.link_freq_index = FREQ_INDEX_720P,
 		.mode_data = imx290_720p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_720p_common_settings),
@@ -610,6 +616,19 @@ static int imx290_set_hmax(struct imx290 *imx290, u32 val)
 	return 0;
 }
 
+static int imx290_set_vmax(struct imx290 *imx290, u32 val)
+{
+	u32 vmax = val + imx290->current_mode->height;
+	int ret;
+
+	ret = imx290_write_buffered_reg(imx290, IMX290_VMAX_LOW, 3,
+					vmax);
+	if (ret)
+		dev_err(imx290->dev, "Unable to write vmax\n");
+
+	return ret;
+}
+
 /* Stop streaming */
 static int imx290_stop_streaming(struct imx290 *imx290)
 {
@@ -640,6 +659,9 @@ static int imx290_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_HBLANK:
 		ret = imx290_set_hmax(imx290, ctrl->val);
+		break;
+	case V4L2_CID_VBLANK:
+		ret = imx290_set_vmax(imx290, ctrl->val);
 		break;
 	case V4L2_CID_TEST_PATTERN:
 		if (ctrl->val) {
@@ -805,6 +827,16 @@ static int imx290_set_fmt(struct v4l2_subdev *sd,
 						 1, mode->hmax - mode->width);
 			__v4l2_ctrl_s_ctrl(imx290->hblank,
 					   mode->hmax - mode->width);
+		}
+
+		if (imx290->vblank) {
+			__v4l2_ctrl_modify_range(imx290->vblank,
+						 mode->vmax - mode->height,
+						 IMX290_VMAX_MAX - mode->height,
+						 1,
+						 mode->vmax - mode->height);
+			__v4l2_ctrl_s_ctrl(imx290->vblank,
+					   mode->vmax - mode->height);
 		}
 	}
 
@@ -1164,7 +1196,7 @@ static int imx290_probe(struct i2c_client *client)
 	 */
 	imx290_entity_init_cfg(&imx290->sd, NULL);
 
-	v4l2_ctrl_handler_init(&imx290->ctrls, 5);
+	v4l2_ctrl_handler_init(&imx290->ctrls, 6);
 
 	v4l2_ctrl_new_std(&imx290->ctrls, &imx290_ctrl_ops,
 			  V4L2_CID_GAIN, 0, 238, 1, 0);
@@ -1175,6 +1207,12 @@ static int imx290_probe(struct i2c_client *client)
 					   IMX290_HMAX_MIN - mode->width,
 					   IMX290_HMAX_MAX - mode->width, 1,
 					   mode->hmax - mode->width);
+
+	imx290->vblank = v4l2_ctrl_new_std(&imx290->ctrls, &imx290_ctrl_ops,
+					   V4L2_CID_VBLANK,
+					   mode->vmax - mode->height,
+					   IMX290_VMAX_MAX - mode->height, 1,
+					   mode->vmax - mode->height);
 
 	imx290->link_freq =
 		v4l2_ctrl_new_int_menu(&imx290->ctrls, &imx290_ctrl_ops,
