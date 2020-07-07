@@ -57,6 +57,13 @@ enum imx290_clk_index {
 #define IMX290_PGCTRL_THRU BIT(1)
 #define IMX290_PGCTRL_MODE(n) ((n) << 4)
 
+#define IMX290_NATIVE_WIDTH		1945U
+#define IMX290_NATIVE_HEIGHT		1109U
+#define IMX290_PIXEL_ARRAY_LEFT		4U
+#define IMX290_PIXEL_ARRAY_TOP		12U
+#define IMX290_PIXEL_ARRAY_WIDTH	1937U
+#define IMX290_PIXEL_ARRAY_HEIGHT	1097U
+
 static const char * const imx290_supply_name[] = {
 	"vdda",
 	"vddd",
@@ -76,6 +83,7 @@ struct imx290_mode {
 	u32 hmax;
 	u32 vmax;
 	u8 link_freq_index;
+	struct v4l2_rect crop;
 
 	const struct imx290_regval *mode_data;
 	u32 mode_data_size;
@@ -431,6 +439,12 @@ static const struct imx290_mode imx290_modes_2lanes[] = {
 		.hmax = 0x0898,
 		.vmax = 0x0465,
 		.link_freq_index = FREQ_INDEX_1080P,
+		.crop = {
+			.left = 4 + 8,
+			.top = 12 + 8,
+			.width = 1920,
+			.height = 1080,
+		},
 		.mode_data = imx290_1080p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_1080p_common_settings),
 		.lane_data = imx290_1080p_2lane_settings,
@@ -447,6 +461,12 @@ static const struct imx290_mode imx290_modes_2lanes[] = {
 		.hmax = 0x0ce4,
 		.vmax = 0x02ee,
 		.link_freq_index = FREQ_INDEX_720P,
+		.crop = {
+			.left = 4 + 8 + 320,
+			.top = 12 + 8 + 180,
+			.width = 1280,
+			.height = 720,
+		},
 		.mode_data = imx290_720p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_720p_common_settings),
 		.lane_data = imx290_720p_2lane_settings,
@@ -466,6 +486,12 @@ static const struct imx290_mode imx290_modes_4lanes[] = {
 		.hmax = 0x0898,
 		.vmax = 0x0465,
 		.link_freq_index = FREQ_INDEX_1080P,
+		.crop = {
+			.left = 4 + 8,
+			.top = 12 + 8,
+			.width = 1920,
+			.height = 1080,
+		},
 		.mode_data = imx290_1080p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_1080p_common_settings),
 		.lane_data = imx290_1080p_4lane_settings,
@@ -482,6 +508,12 @@ static const struct imx290_mode imx290_modes_4lanes[] = {
 		.hmax = 0x0ce4,
 		.vmax = 0x02ee,
 		.link_freq_index = FREQ_INDEX_720P,
+		.crop = {
+			.left = 4 + 8 + 320,
+			.top = 12 + 8 + 180,
+			.width = 1280,
+			.height = 720,
+		},
 		.mode_data = imx290_720p_common_settings,
 		.mode_data_size = ARRAY_SIZE(imx290_720p_common_settings),
 		.lane_data = imx290_720p_4lane_settings,
@@ -946,6 +978,57 @@ static int imx290_write_current_format(struct imx290 *imx290)
 	return 0;
 }
 
+static const struct v4l2_rect *
+__imx290_get_pad_crop(struct imx290 *imx290, struct v4l2_subdev_pad_config *cfg,
+		      unsigned int pad, enum v4l2_subdev_format_whence which)
+{
+	switch (which) {
+	case V4L2_SUBDEV_FORMAT_TRY:
+		return v4l2_subdev_get_try_crop(&imx290->sd, cfg, pad);
+	case V4L2_SUBDEV_FORMAT_ACTIVE:
+		return &imx290->current_mode->crop;
+	}
+
+	return NULL;
+}
+
+static int imx290_get_selection(struct v4l2_subdev *sd,
+				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_selection *sel)
+{
+	switch (sel->target) {
+	case V4L2_SEL_TGT_CROP: {
+		struct imx290 *imx290 = to_imx290(sd);
+
+		mutex_lock(&imx290->lock);
+		sel->r = *__imx290_get_pad_crop(imx290, cfg, sel->pad,
+						sel->which);
+		mutex_unlock(&imx290->lock);
+
+		return 0;
+	}
+
+	case V4L2_SEL_TGT_NATIVE_SIZE:
+		sel->r.top = 0;
+		sel->r.left = 0;
+		sel->r.width = IMX290_NATIVE_WIDTH;
+		sel->r.height = IMX290_NATIVE_HEIGHT;
+
+		return 0;
+
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+		sel->r.top = IMX290_PIXEL_ARRAY_TOP;
+		sel->r.left = IMX290_PIXEL_ARRAY_LEFT;
+		sel->r.width = IMX290_PIXEL_ARRAY_WIDTH;
+		sel->r.height = IMX290_PIXEL_ARRAY_HEIGHT;
+
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
 /* Start streaming */
 static int imx290_start_streaming(struct imx290 *imx290)
 {
@@ -1104,6 +1187,7 @@ static const struct v4l2_subdev_pad_ops imx290_pad_ops = {
 	.enum_frame_size = imx290_enum_frame_size,
 	.get_fmt = imx290_get_fmt,
 	.set_fmt = imx290_set_fmt,
+	.get_selection = imx290_get_selection,
 };
 
 static const struct v4l2_subdev_ops imx290_subdev_ops = {
