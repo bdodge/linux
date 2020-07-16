@@ -29,18 +29,6 @@ enum vc_sm_vpu_mapping_state {
 	VPU_UNMAPPING
 };
 
-struct vc_sm_alloc_data {
-	unsigned long num_pages;
-	void *priv_virt;
-	struct sg_table *sg_table;
-};
-
-struct vc_sm_imported {
-	struct dma_buf *dma_buf;
-	struct dma_buf_attachment *attach;
-	struct sg_table *sgt;
-};
-
 struct vc_sm_buffer {
 	struct list_head global_buffer_list;	/* Global list of buffers. */
 
@@ -58,27 +46,20 @@ struct vc_sm_buffer {
 	char name[VC_SM_MAX_NAME_LEN];
 
 	int in_use:1;	/* Kernel is still using this resource */
-	int imported:1;	/* Imported dmabuf */
 
 	enum vc_sm_vpu_mapping_state vpu_state;
 	u32 vc_handle;	/* VideoCore handle for this buffer */
-	int vpu_allocated;	/*
-				 * The VPU made this allocation. Release the
-				 * local dma_buf when the VPU releases the
-				 * resource.
-				 */
 
 	/* DMABUF related fields */
-	struct dma_buf *dma_buf;
 	dma_addr_t dma_addr;
 	void *cookie;
 
 	struct vc_sm_privdata_t *private;
 
-	union {
-		struct vc_sm_alloc_data alloc;
-		struct vc_sm_imported import;
-	};
+	/* Source dma-buf fields */
+	struct dma_buf *src_dma_buf;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
 };
 
 #endif
