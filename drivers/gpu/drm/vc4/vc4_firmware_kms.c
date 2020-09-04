@@ -1835,8 +1835,8 @@ static int vc4_fkms_bind(struct device *dev, struct device *master, void *data)
 	/* firmware kms doesn't have precise a scanoutpos implementation, so
 	 * we can't do the precise vblank timestamp mode.
 	 */
-	drm->driver->get_scanout_position = NULL;
-	drm->driver->get_vblank_timestamp = NULL;
+//	drm->driver->get_scanout_position = NULL;
+//	drm->driver->get_vblank_timestamp = NULL;
 
 	firmware_node = of_parse_phandle(dev->of_node, "brcm,firmware", 0);
 	vc4->firmware = rpi_firmware_get(firmware_node);
