@@ -1482,7 +1482,7 @@ static int vc4_spdif_mask_get(struct snd_kcontrol *kcontrol,
 			      struct snd_ctl_elem_value *ucontrol)
 {
 	memset(ucontrol->value.iec958.status, 0xff,
-	       FIELD_SIZEOF(struct vc4_hdmi_audio, iec_status));
+	       sizeof_field(struct vc4_hdmi_audio, iec_status));
 
 	return 0;
 }
