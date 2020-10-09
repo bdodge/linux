@@ -1207,6 +1207,7 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 	struct vb2_queue *vq;
 	struct vchiq_mmal_port *port;
 	bool update_capture_port = false;
+	bool reenable_port = false;
 	int ret;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Setting format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
@@ -1282,6 +1283,24 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 	if (!port)
 		return 0;
 
+	if (port->enabled) {
+		/*
+		 * This should only ever happen with DECODE and the MMAL output
+		 * port that has been enabled for resolution changed events.
+		 * In this case no buffers have been allocated or sent to the
+		 * component, so warn on that.
+		 */
+		WARN_ON(ctx->dev->role != DECODE ||
+			f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE ||
+			atomic_read(&port->buffers_with_vpu));
+
+		ret = vchiq_mmal_port_disable(ctx->dev->instance, port);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: Error disabling port update buffer count, ret %d\n",
+				 __func__, ret);
+		reenable_port = true;
+	}
+
 	setup_mmal_port_format(ctx, q_data, port);
 	ret = vchiq_mmal_port_set_format(ctx->dev->instance, port);
 	if (ret) {
@@ -1296,6 +1315,14 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 			 port->minimum_buffer.size);
 	}
 
+	if (reenable_port) {
+		ret = vchiq_mmal_port_enable(ctx->dev->instance,
+					     port,
+					     op_buffer_cb);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling o/p port, ret %d\n",
+				 __func__, ret);
+	}
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Set format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
 		 f->type, q_data->crop_width, q_data->height,
 		 q_data->fmt->fourcc, q_data->sizeimage);
@@ -2003,9 +2030,11 @@ static int bcm2835_codec_create_component(struct bcm2835_codec_ctx *ctx)
 
 	setup_mmal_port_format(ctx, &ctx->q_data[V4L2_M2M_SRC],
 			       &ctx->component->input[0]);
+	ctx->component->input[0].cb_ctx = ctx;
 
 	setup_mmal_port_format(ctx, &ctx->q_data[V4L2_M2M_DST],
 			       &ctx->component->output[0]);
+	ctx->component->output[0].cb_ctx = ctx;
 
 	ret = vchiq_mmal_port_set_format(dev->instance,
 					 &ctx->component->input[0]);
@@ -2265,6 +2294,24 @@ static void bcm2835_codec_buffer_cleanup(struct vb2_buffer *vb)
 	bcm2835_codec_mmal_buf_cleanup(&buf->mmal);
 }
 
+static void bcm2835_codec_flush_buffers(struct bcm2835_codec_ctx *ctx,
+					struct vchiq_mmal_port *port)
+{
+	int ret;
+
+	while (atomic_read(&port->buffers_with_vpu)) {
+		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Waiting for buffers to be returned - %d outstanding\n",
+			 __func__, atomic_read(&port->buffers_with_vpu));
+		ret = wait_for_completion_timeout(&ctx->frame_cmplt,
+						  COMPLETE_TIMEOUT);
+		if (ret <= 0) {
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: Timeout waiting for buffers to be returned - %d outstanding\n",
+				 __func__,
+				 atomic_read(&port->buffers_with_vpu));
+			break;
+		}
+	}
+}
 static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 					 unsigned int count)
 {
@@ -2272,7 +2319,7 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 	struct bcm2835_codec_dev *dev = ctx->dev;
 	struct bcm2835_codec_q_data *q_data = get_q_data(ctx, q->type);
 	struct vchiq_mmal_port *port = get_port_data(ctx, q->type);
-	int ret;
+	int ret = 0;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: type: %d count %d\n",
 		 __func__, q->type, count);
@@ -2285,6 +2332,24 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling component, ret %d\n",
 				 __func__, ret);
 		ctx->component_enabled = true;
+	}
+
+	if (port->enabled) {
+		/*
+		 * This should only ever happen with DECODE and the MMAL output
+		 * port that has been enabled for resolution changed events.
+		 * In this case no buffers have been allocated or sent to the
+		 * component, so warn on that.
+		 */
+		WARN_ON(ctx->dev->role != DECODE ||
+			q->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE ||
+			atomic_read(&port->buffers_with_vpu));
+
+		ret = vchiq_mmal_port_disable(dev->instance, port);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: Error disabling port update buffer count, ret %d\n",
+				 __func__, ret);
+		bcm2835_codec_flush_buffers(ctx, port);
 	}
 
 	if (count < port->minimum_buffer.num)
@@ -2312,22 +2377,38 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 				      &q_data->eos_buffer.mmal);
 		q_data->eos_buffer_in_use = false;
 
-		port->cb_ctx = ctx;
 		ret = vchiq_mmal_port_enable(dev->instance,
 					     port,
 					     ip_buffer_cb);
 		if (ret)
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling i/p port, ret %d\n",
 				 __func__, ret);
+		if (dev->role == DECODE &&
+		    !ctx->component->output[0].enabled) {
+			/*
+			 * Decode needs to enable the MMAL output/V4L2 CAPTURE
+			 * port at this point too so that we have everything
+			 * set up for dynamic resolution changes.
+			 */
+			ret = vchiq_mmal_port_enable(dev->instance,
+						     &ctx->component->output[0],
+						     op_buffer_cb);
+			if (ret)
+				v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling o/p port, ret %d\n",
+					 __func__, ret);
+		}
 	} else {
-		port->cb_ctx = ctx;
-		ret = vchiq_mmal_port_enable(dev->instance,
-					     port,
-					     op_buffer_cb);
-		if (ret)
-			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling o/p port, ret %d\n",
-				 __func__, ret);
+		if (!port->enabled) {
+			ret = vchiq_mmal_port_enable(dev->instance,
+						     port,
+						     op_buffer_cb);
+			if (ret)
+				v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling o/p port, ret %d\n",
+					 __func__, ret);
+		}
 	}
+	v4l2_err(&ctx->dev->v4l2_dev, "%s: Done, ret %d\n",
+		 __func__, ret);
 	return ret;
 }
 
@@ -2366,17 +2447,21 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 			 __func__, V4L2_TYPE_IS_OUTPUT(q->type) ? "i/p" : "o/p",
 			 ret);
 
-	while (atomic_read(&port->buffers_with_vpu)) {
-		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Waiting for buffers to be returned - %d outstanding\n",
-			 __func__, atomic_read(&port->buffers_with_vpu));
-		ret = wait_for_completion_timeout(&ctx->frame_cmplt,
-						  COMPLETE_TIMEOUT);
-		if (ret <= 0) {
-			v4l2_err(&ctx->dev->v4l2_dev, "%s: Timeout waiting for buffers to be returned - %d outstanding\n",
-				 __func__,
-				 atomic_read(&port->buffers_with_vpu));
-			break;
-		}
+	bcm2835_codec_flush_buffers(ctx, port);
+
+	if (dev->role == DECODE &&
+	    q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
+	    ctx->component->input[0].enabled) {
+		/*
+		 * For decode we need to keep the MMAL output port enabled for
+		 * resolution changed events whenever the input is enabled.
+		 */
+		ret = vchiq_mmal_port_enable(dev->instance,
+					     &ctx->component->output[0],
+					     op_buffer_cb);
+		if (ret)
+			v4l2_err(&ctx->dev->v4l2_dev, "%s: Failed enabling o/p port, ret %d\n",
+				 __func__, ret);
 	}
 
 	/* If both ports disabled, then disable the component */
