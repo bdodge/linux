@@ -44,6 +44,10 @@
 #define OV9281_MODE_SW_STANDBY		0x0
 #define OV9281_MODE_STREAMING		BIT(0)
 
+#define OV9281_REG_V_FLIP		0x3820
+#define OV9281_REG_H_FLIP		0x3821
+#define OV9281_FLIP_BIT			BIT(2)
+
 #define OV9281_REG_EXPOSURE		0x3500
 #define	OV9281_EXPOSURE_MIN		4
 #define	OV9281_EXPOSURE_STEP		1
@@ -914,6 +918,7 @@ static int ov9281_set_ctrl(struct v4l2_ctrl *ctrl)
 					     struct ov9281, ctrl_handler);
 	struct i2c_client *client = ov9281->client;
 	s64 max;
+	u32 val;
 	int ret = 0;
 
 	/* Propagate change of current control to all related controls */
@@ -954,6 +959,21 @@ static int ov9281_set_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_TEST_PATTERN:
 		ret = ov9281_enable_test_pattern(ov9281, ctrl->val);
 		break;
+	case V4L2_CID_HFLIP:
+		ret = ov9281_write_reg(ov9281->client, OV9281_REG_H_FLIP,
+				       OV9281_REG_VALUE_08BIT,
+				       ctrl->val ? OV9281_FLIP_BIT : 0);
+		break;
+	case V4L2_CID_VFLIP:
+		ret = ov9281_read_reg(ov9281->client, OV9281_REG_V_FLIP,
+				      OV9281_REG_VALUE_08BIT, &val);
+		if (ctrl->val)
+			val |= OV9281_FLIP_BIT;
+		else
+			val &= ~OV9281_FLIP_BIT;
+		ret = ov9281_write_reg(ov9281->client, OV9281_REG_V_FLIP,
+				       OV9281_REG_VALUE_08BIT, val);
+		break;
 	default:
 		dev_warn(&client->dev, "%s Unhandled id:0x%x, val:0x%x\n",
 			 __func__, ctrl->id, ctrl->val);
@@ -980,7 +1000,7 @@ static int ov9281_initialize_controls(struct ov9281 *ov9281)
 
 	handler = &ov9281->ctrl_handler;
 	mode = ov9281->cur_mode;
-	ret = v4l2_ctrl_handler_init(handler, 8);
+	ret = v4l2_ctrl_handler_init(handler, 9);
 	if (ret)
 		return ret;
 	handler->lock = &ov9281->mutex;
@@ -1026,6 +1046,12 @@ static int ov9281_initialize_controls(struct ov9281 *ov9281)
 					     V4L2_CID_TEST_PATTERN,
 					     ARRAY_SIZE(ov9281_test_pattern_menu) - 1,
 					     0, 0, ov9281_test_pattern_menu);
+
+	v4l2_ctrl_new_std(handler, &ov9281_ctrl_ops,
+			  V4L2_CID_HFLIP, 0, 1, 1, 0);
+
+	v4l2_ctrl_new_std(handler, &ov9281_ctrl_ops,
+			  V4L2_CID_VFLIP, 0, 1, 1, 0);
 
 	if (handler->error) {
 		ret = handler->error;
