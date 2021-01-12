@@ -45,6 +45,97 @@ static int r69429_panel_init(struct r69429_panel *r69429)
 
 #if 1
 	// Command access protect
+	u8 com1[] = { 0xb0, 0x00 };
+	err =  mipi_dsi_generic_write(dsi, com1, 2);
+	err =  mipi_dsi_generic_write(dsi, com1, 2);
+//	msleep(40);
+
+	u8 com2[] = { 0xd6, 0x01 };
+	err =  mipi_dsi_generic_write(dsi, com2, 2);
+//	msleep(40);
+
+	u8 com3[] = { 0xb3, 0x04, 0x08, 0x00, 0x22, 0x00 };
+	err =  mipi_dsi_generic_write(dsi, com3, 6);
+//	msleep(40);
+
+	//Interface setting
+	u8 com4[] = { 0xb3, 0x14, 0x08, 0x00, 0x22, 0x00 };
+	// video thru mode w/o RAM
+	err =  mipi_dsi_generic_write(dsi, com4, 6);
+//	msleep(80);
+
+	// interface ID setting
+	u8 com5[] = { 0xb4, 0x0c }; // virt chan 0
+	err =  mipi_dsi_generic_write(dsi, com5, 2);
+//	msleep(40);
+
+	u8 coma1[] = { 0xde, 0x00 };
+	err =  mipi_dsi_generic_write(dsi, coma1, 2 );
+	//err += mipi_dsi_dcs_write(dsi, 0xde, com1, 5);
+//	msleep(40);
+
+	// dsi control
+	u8 com6[] = { 0xb6, 0x3a, 0xd3 };
+	// ftxclk = fdsiclk/24
+
+	//1Gbit/s/lane / 500MHz.
+	//u8 com6[] = { 0x3b, 0xd3 };
+	// ftxclk = fdsiclk/32
+	// 740-1000 mbps
+
+	//err += mipi_dsi_dcs_write(dsi, 0xb6, com6, 2);
+	err =  mipi_dsi_generic_write(dsi, com6, 3);
+//	msleep(40);
+
+	u8 com7[] = { 0x67, 0x60, 0x02 };
+	//err += mipi_dsi_dcs_write(dsi, 0xb7, com7, 2);
+	err =  mipi_dsi_generic_write(dsi, com7, 3);
+
+//	msleep(40);
+
+	// write_display_brightness
+	u8 com8[] = { 0x51, 0xe0 };
+	//err += mipi_dsi_dcs_write(dsi, 0x51, com8, 1);
+	err =  mipi_dsi_generic_write(dsi, com8, 2);
+
+//	msleep(40);
+
+	// write_CTRL_display
+	u8 com9[] = { 0x53, 0x04 };
+	//err += mipi_dsi_dcs_write(dsi, 0x53, com9, 1);
+	err =  mipi_dsi_generic_write(dsi, com9, 2);
+//	msleep(40);
+
+	// set pixel format
+	u8 com10[] = { 0x3a, 0x77 }; // 24 bpp
+	err =  mipi_dsi_generic_write(dsi, com10, 2);
+	//err += mipi_dsi_dcs_write(dsi, 0x3a, com10, 1);
+//	msleep(40);
+
+	// set tear on
+	u8 coma2[] = { 0x35, 0x01 };
+	err =  mipi_dsi_generic_write(dsi, coma2, 2);
+	//err += mipi_dsi_dcs_write(dsi, 0x35, com2, 1);
+//	msleep(40);
+
+	// set column address
+	u8 com11[] = { 0x2a, 0x00, 0x00, 0x04, 0xaf };
+	err =  mipi_dsi_generic_write(dsi, com11, 5);
+	//err += mipi_dsi_dcs_write(dsi, 0x2a, com11, 4);
+//	msleep(40);
+
+	// set page address
+	u8 com12[] = { 0x2b, 0x00, 0x00, 0x07, 0x7f };
+	err =  mipi_dsi_generic_write(dsi, com12, 5);
+	//err += mipi_dsi_dcs_write(dsi, 0x2b, com12, 4);
+
+	if (err < 0) {
+		DRM_ERROR("failed to init: %d\n",ret);
+		return err;
+	}
+//	msleep(100);
+#elif 0
+	// Command access protect
 	u8 com1[] = { 0x00 };
 	err =  mipi_dsi_dcs_write(dsi, 0xb0, com1, 1);
 //	msleep(40);
@@ -219,14 +310,15 @@ static int r69429_panel_on(struct r69429_panel *r69429)
 	struct device *dev = &r69429->dsi->dev;
 	int ret;
 	DRM_ERROR("panel on\n");
+	ret = mipi_dsi_dcs_set_display_on(dsi);
+	if (ret < 0)
+		DRM_ERROR("failed to set display on: %d\n",ret);
+
 	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
 	if (ret < 0)
 		DRM_ERROR("failed to exit sleep mode: %d\n",ret);
-	msleep(150);
-	ret += mipi_dsi_dcs_set_display_on(dsi);
-	if (ret < 0)
-		DRM_ERROR("failed to set display on: %d\n",ret);
-	msleep(300);
+
+//	msleep(20);
 	return ret;
 }
 
@@ -302,9 +394,9 @@ static int r69429_panel_prepare(struct drm_panel *panel)
 	DRM_ERROR("pre reset\n");
 	if (0 && r69429->reset_gpio) {
 		gpiod_set_value_cansleep(r69429->reset_gpio, 0);
-//		msleep(150);
+		msleep(5);
 		gpiod_set_value_cansleep(r69429->reset_gpio, 1);
-//		msleep(150);
+//		msleep(5);
 	}
 //	mipi_dsi_dcs_soft_reset(dsi);
 //	msleep(10);
