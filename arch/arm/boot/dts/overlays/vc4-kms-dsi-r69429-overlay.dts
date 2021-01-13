@@ -30,6 +30,7 @@
 				compatible = "renesassp,r69429";
 				reset-gpios = <&gpio 5 0>;
 				reg = <0>;
+				backlight = <&backlight>;
 				port {
 					panel_dsi_port: endpoint {
 						remote-endpoint = <&dsi_out_port>;
@@ -69,7 +70,7 @@
         fragment@4 {
                 target-path = "/soc";
                 __overlay__ {
-                        backlight {
+			backlight: backlight {
                                 compatible = "pwm-backlight";
                                 brightness-levels = <0 255>;
                                 num-interpolated-steps = <255>;
