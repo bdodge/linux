@@ -412,14 +412,6 @@ static int r69429_panel_prepare(struct drm_panel *panel)
 		dev_err(dev, "failed to init panel: %d\n", ret);
 		goto poweroff;
 	}
-	DRM_ERROR("pre disp on\n");
-	ret = r69429_panel_on(r69429);
-	if (ret < 0) {
-		dev_err(dev, "failed to set panel on: %d\n", ret);
-		goto poweroff;
-	}
-
-	msleep(100);
 	r69429->prepared = true;
 	DRM_ERROR("prepared\n");
 	return 0;
@@ -437,9 +429,20 @@ poweroff:
 static int r69429_panel_enable(struct drm_panel *panel)
 {
 	struct r69429_panel *r69429 = to_r69429_panel(panel);
+	struct device *dev = &r69429->dsi->dev;
+	int ret;
 
 	if (r69429->enabled)
 		return 0;
+
+	DRM_ERROR("pre disp on\n");
+	ret = r69429_panel_on(r69429);
+	if (ret < 0) {
+		dev_err(dev, "failed to set panel on: %d\n", ret);
+		return ret;
+	}
+
+	msleep(100);
 
 	r69429->enabled = true;
 
