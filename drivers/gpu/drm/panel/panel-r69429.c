@@ -310,13 +310,18 @@ static int r69429_panel_on(struct r69429_panel *r69429)
 	struct device *dev = &r69429->dsi->dev;
 	int ret;
 	DRM_ERROR("panel on\n");
+
 	ret = mipi_dsi_dcs_set_display_on(dsi);
 	if (ret < 0)
 		DRM_ERROR("failed to set display on: %d\n",ret);
 
+	msleep(100);
+
 	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
 	if (ret < 0)
 		DRM_ERROR("failed to exit sleep mode: %d\n",ret);
+	msleep(100);
+
 
 //	msleep(20);
 	return ret;
@@ -394,12 +399,13 @@ static int r69429_panel_prepare(struct drm_panel *panel)
 	DRM_ERROR("pre reset\n");
 	if (0 && r69429->reset_gpio) {
 		gpiod_set_value_cansleep(r69429->reset_gpio, 0);
-		msleep(5);
+		msleep(50);
 		gpiod_set_value_cansleep(r69429->reset_gpio, 1);
-//		msleep(5);
+		msleep(100);
 	}
 //	mipi_dsi_dcs_soft_reset(dsi);
 //	msleep(10);
+
 	DRM_ERROR("pre init\n");
 	ret = r69429_panel_init(r69429);
 	if (ret < 0) {
@@ -413,6 +419,7 @@ static int r69429_panel_prepare(struct drm_panel *panel)
 		goto poweroff;
 	}
 
+	msleep(100);
 	r69429->prepared = true;
 	DRM_ERROR("prepared\n");
 	return 0;
