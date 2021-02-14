@@ -5980,6 +5980,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/display/ti/
 F:	drivers/gpu/drm/omapdrm/
 
+DRM DRIVERS FOR TI SN65DSI84 DSI TO LVDS BRIDGE
+M:	Jagan Teki <jagan@amarulasolutions.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/bridge/ti,sn65dsi8x.yaml
+F:	drivers/gpu/drm/bridge/ti-sn65dsi8x.c
+
 DRM DRIVERS FOR V3D
 M:	Eric Anholt <eric@anholt.net>
 S:	Supported
