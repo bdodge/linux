@@ -44,11 +44,7 @@ static int saa716x_enable_msix(struct saa716x_dev *saa716x)
 	for (i = 0; i < SAA716x_MSI_MAX_VECTORS; i++)
 		saa716x->msix_entries[i].entry = i;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
 	ret = pci_enable_msix_exact(pdev, saa716x->msix_entries, SAA716x_MSI_MAX_VECTORS);
-#else
-	ret = pci_enable_msix(pdev, saa716x->msix_entries, SAA716x_MSI_MAX_VECTORS);
-#endif
 	if (ret < 0)
 		dprintk(SAA716x_ERROR, 1, "MSI-X request failed <%d>", ret);
 	if (ret > 0)
