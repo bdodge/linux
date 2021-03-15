@@ -1,17 +1,15 @@
-#include <asm/io.h>
-#include <asm/pgtable.h>
 #include <asm/page.h>
-#include <linux/kmod.h>
-#include <linux/vmalloc.h>
-#include <linux/init.h>
-#include <linux/device.h>
 #include <linux/delay.h>
-
-#include <linux/signal.h>
-#include <linux/sched.h>
+#include <linux/device.h>
+#include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/io.h>
+#include <linux/kmod.h>
+#include <linux/pgtable.h>
+#include <linux/sched.h>
+#include <linux/signal.h>
+#include <linux/vmalloc.h>
 
-#include "saa716x_spi.h"
 #include "saa716x_msi.h"
 #include "saa716x_priv.h"
 
@@ -164,9 +162,12 @@ int saa716x_pci_init(struct saa716x_dev *saa716x)
 			dprintk(SAA716x_ERROR, 1, "Unable to obtain 64bit DMA");
 			goto fail1;
 		}
-	} else if ((err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32))) != 0) {
-		dprintk(SAA716x_ERROR, 1, "Unable to obtain 32bit DMA");
-		goto fail1;
+	} else {
+		err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
+		if (err != 0) {
+			dprintk(SAA716x_ERROR, 1, "Unable to obtain 32bit DMA");
+			goto fail1;
+		}
 	}
 
 	pci_set_master(pdev);

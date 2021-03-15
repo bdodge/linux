@@ -15,7 +15,6 @@
 #include "saa716x_cgu.h"
 #include "saa716x_dma.h"
 #include "saa716x_fgpi.h"
-#include "saa716x_spi.h"
 #include "saa716x_vip.h"
 
 #include <media/dmxdev.h>
@@ -29,25 +28,25 @@
 #define SAA716x_INFO		2
 #define SAA716x_DEBUG		3
 
-#define SAA716x_DEV		(saa716x)->num
-#define SAA716x_VERBOSE		(saa716x)->verbose
+#define SAA716x_DEV		((saa716x)->num)
+#define SAA716x_VERBOSE		((saa716x)->verbose)
 #define SAA716x_MAX_ADAPTERS	4
 
 #define dprintk(__x, __y, __fmt, __arg...) do {								\
 	if (__y) {											\
 		if	((SAA716x_VERBOSE > SAA716x_ERROR) && (SAA716x_VERBOSE > __x))			\
-			printk(KERN_ERR "%s (%d): " __fmt "\n" , __func__ , SAA716x_DEV , ##__arg);	\
+			printk(KERN_ERR "%s (%d): " __fmt "\n", __func__, SAA716x_DEV, ##__arg);	\
 		else if	((SAA716x_VERBOSE > SAA716x_NOTICE) && (SAA716x_VERBOSE > __x))			\
-			printk(KERN_NOTICE "%s (%d): " __fmt "\n" , __func__ , SAA716x_DEV , ##__arg);	\
+			printk(KERN_NOTICE "%s (%d): " __fmt "\n", __func__, SAA716x_DEV, ##__arg);	\
 		else if ((SAA716x_VERBOSE > SAA716x_INFO) && (SAA716x_VERBOSE > __x))			\
-			printk(KERN_INFO "%s (%d): " __fmt "\n" , __func__ , SAA716x_DEV , ##__arg);	\
+			printk(KERN_INFO "%s (%d): " __fmt "\n", __func__, SAA716x_DEV, ##__arg);	\
 		else if ((SAA716x_VERBOSE > SAA716x_DEBUG) && (SAA716x_VERBOSE > __x))			\
-			printk(KERN_DEBUG "%s (%d): " __fmt "\n" , __func__ , SAA716x_DEV , ##__arg);	\
+			printk(KERN_DEBUG "%s (%d): " __fmt "\n", __func__, SAA716x_DEV, ##__arg);	\
 	} else {											\
 		if (SAA716x_VERBOSE > __x)								\
-			printk(__fmt , ##__arg);							\
+			printk(__fmt, ##__arg);							\
 	}												\
-} while(0)
+} while (0)
 
 
 #define NXP_SEMICONDUCTOR	0x1131
@@ -82,11 +81,10 @@ struct saa716x_msix_entry {
 
 struct saa716x_dev;
 struct saa716x_adapter;
-struct saa716x_spi_config;
 
 struct saa716x_adap_config {
 	u32				ts_port;
-	void				(*worker)(unsigned long);
+	void				(*worker)(unsigned long arg);
 };
 
 struct saa716x_config {
@@ -120,11 +118,11 @@ struct saa716x_adapter {
 	u8				feeds;
 	u8				count;
 
-	struct i2c_client	*i2c_client_demod;
-	struct i2c_client	*i2c_client_tuner;
-	
-	struct tbsci_i2c_state *tbsci;
-	void*adap_priv;
+	struct i2c_client		*i2c_client_demod;
+	struct i2c_client		*i2c_client_tuner;
+
+	struct tbsci_i2c_state		*tbsci;
+	void				*adap_priv;
 };
 
 struct saa716x_dev {
@@ -136,7 +134,7 @@ struct saa716x_dev {
 	int				num;          /* device count  (saa716x based cards) */
 	int				verbose;
 
-	u8 				revision;
+	u8				revision;
 
 	/* PCI */
 	void __iomem			*mmio;
@@ -154,9 +152,6 @@ struct saa716x_dev {
 	struct saa716x_i2c		i2c[2];
 	u32				i2c_rate; /* init time */
 	u32				I2C_DEV[2];
-
-	struct saa716x_spi_state	*saa716x_spi;
-	struct saa716x_spi_config	spi_config;
 
 	struct saa716x_adapter		saa716x_adap[SAA716x_MAX_ADAPTERS];
 	struct mutex			adap_lock;

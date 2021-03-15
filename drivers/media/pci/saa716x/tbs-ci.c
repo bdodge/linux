@@ -23,12 +23,16 @@ int tbsci_i2c_read(struct tbsci_state *state)
 	int ret;
 	u8 buf = 0;
 
-	struct i2c_msg msg = { .addr = TBSCI_I2C_ADDR, .flags = I2C_M_RD,
-			.buf = &buf, .len = 1 };
+	struct i2c_msg msg = {
+		.addr = TBSCI_I2C_ADDR,
+		.flags = I2C_M_RD,
+		.buf = &buf,
+		.len = 1
+	};
 
-	if (((state->mode == 2) || (state->mode == 4) ||
-			(state->mode == 6) || (state->mode == 8) || (state->mode == 9))
-		&& (state->nr == 1))
+	if ((state->mode == 2 || state->mode == 4 || state->mode == 6 ||
+	     state->mode == 8 || state->mode == 9) &&
+	    state->nr == 1)
 		msg.addr += 1;
 
 	if (state->mode == 10)
@@ -50,12 +54,16 @@ int tbsci_i2c_write(struct tbsci_state *state,
 	int ret;
 	unsigned char buf[len + 1];
 
-	struct i2c_msg msg = { .addr = TBSCI_I2C_ADDR, .flags = 0,
-			.buf = &buf[0], .len = len + 1 };
+	struct i2c_msg msg = {
+		.addr = TBSCI_I2C_ADDR,
+		.flags = 0,
+		.buf = &buf[0],
+		.len = len + 1
+	};
 
-	if (((state->mode == 2) || (state->mode == 4) ||
-			(state->mode == 6) || (state->mode == 8) || (state->mode == 9)) 
-		&& (state->nr == 1))
+	if ((state->mode == 2 || state->mode == 4 || state->mode == 6 ||
+	     state->mode == 8 || state->mode == 9) &&
+	    state->nr == 1)
 		msg.addr += 1;
 
 	if (state->mode == 10)
@@ -81,12 +89,12 @@ int tbsci_read_cam_control(struct dvb_ca_en50221 *ca,
 	int ret;
 	unsigned char data;
 
-	if (slot != 0)
+	if (slot)
 		return -EINVAL;
 
 	mutex_lock(&state->ca_mutex);
 
-	data = (address & 3);
+	data = address & 3;
 	ret = tbsci_i2c_write(state, 0x80, &data, 1);
 	data = tbsci_i2c_read(state);
 
@@ -105,12 +113,12 @@ int tbsci_write_cam_control(struct dvb_ca_en50221 *ca, int slot,
 	int ret;
 	unsigned char data[2];
 
-	if (slot != 0)
+	if (slot)
 		return -EINVAL;
 
 	mutex_lock(&state->ca_mutex);
 
-	data[0] = (address & 3);
+	data[0] = address & 3;
 	data[1] = value;
 	ret = tbsci_i2c_write(state, 0x80, data, 2);
 
@@ -134,9 +142,8 @@ int tbsci_read_attribute_mem(struct dvb_ca_en50221 *ca,
 
 	mutex_lock(&state->ca_mutex);
 
-	data = (address & 0xff);
-	ret = tbsci_i2c_write(state,
-		((address >> 8) & 0x7f), &data, 1);
+	data = address & 0xff;
+	ret = tbsci_i2c_write(state, ((address >> 8) & 0x7f), &data, 1);
 	data = tbsci_i2c_read(state);
 
 	mutex_unlock(&state->ca_mutex);
@@ -159,10 +166,9 @@ int tbsci_write_attribute_mem(struct dvb_ca_en50221 *ca,
 
 	mutex_lock(&state->ca_mutex);
 
-	data[0] = (address & 0xff);
+	data[0] = address & 0xff;
 	data[1] = value;
-	ret = tbsci_i2c_write(state,
-		((address >> 8) & 0x7f), data, 2);
+	ret = tbsci_i2c_write(state, ((address >> 8) & 0x7f), data, 2);
 
 	mutex_unlock(&state->ca_mutex);
 
@@ -188,19 +194,15 @@ static int tbsci_set_video_port(struct dvb_ca_en50221 *ca,
 	switch (state->mode) {
 	case 0:
 	case 1:
-		saa716x_gpio_set_output(saa716x, 
-			state->nr ? 16 : 17);
+		saa716x_gpio_set_output(saa716x, state->nr ? 16 : 17);
 		msleep(1);
-		saa716x_gpio_write(saa716x, 
-			state->nr ? 16 : 17, (enable & 1));
+		saa716x_gpio_write(saa716x, state->nr ? 16 : 17, enable & 1);
 		msleep(100);
 		break;
 	case 2:
-		saa716x_gpio_set_output(saa716x, 
-			state->nr ? 6 : 16);
+		saa716x_gpio_set_output(saa716x, state->nr ? 6 : 16);
 		msleep(1);
-		saa716x_gpio_write(saa716x, 
-			state->nr ? 6 : 16, (enable & 1));
+		saa716x_gpio_write(saa716x, state->nr ? 6 : 16, enable & 1);
 		msleep(100);
 		break;
 	case 3:
@@ -368,7 +370,7 @@ int tbsci_init(struct saa716x_adapter *adap, int tbsci_nr, int tbsci_mode)
 
 	/* allocate memory for the internal state */
 	state = kzalloc(sizeof(struct tbsci_state), GFP_KERNEL);
-	if (state == NULL) {
+	if (!state) {
 		ret = -ENOMEM;
 		goto error1;
 	}
@@ -394,7 +396,7 @@ int tbsci_init(struct saa716x_adapter *adap, int tbsci_nr, int tbsci_mode)
 	state->ca.data = state;
 	state->priv = adap;
 
-	if ((state->mode != 0) && (state->mode != 10)) {
+	if (state->mode != 0 && state->mode != 10) {
 		data = 1;
 		tbsci_i2c_write(state, 0xc2, &data, 1);
 		data = tbsci_i2c_read(state);
@@ -430,7 +432,7 @@ int tbsci_init(struct saa716x_adapter *adap, int tbsci_nr, int tbsci_mode)
 			break;
 		case 0x66:
 		case 0x68:
-			if (state->mode == 8){
+			if (state->mode == 8) {
 				printk("tbsci: Initializing TBS 6991SE CI %d slot\n",
 					tbsci_nr);
 				//Fix Data Rate
@@ -543,14 +545,17 @@ void tbsci_release(struct saa716x_adapter *adap)
 {
 	struct tbsci_state *state;
 
-	if (NULL == adap) return;
+	if (!adap)
+		return;
 
 	state = (struct tbsci_state *)adap->adap_priv;
-	if (NULL == state) return;
+	if (!state)
+		return;
 
-	if (NULL == state->ca.data) return;
+	if (!state->ca.data)
+		return;
 
 	dvb_ca_en50221_release(&state->ca);
-	//memset(&state->ca, 0, sizeof(state->ca));
+
 	kfree(state);
 }

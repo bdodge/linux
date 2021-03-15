@@ -13,7 +13,6 @@
 #include "saa716x_dcs_reg.h"
 
 #include "saa716x_boot.h"
-#include "saa716x_spi.h"
 #include "saa716x_priv.h"
 
 static int saa716x_ext_boot(struct saa716x_dev *saa716x)
@@ -77,15 +76,7 @@ static int saa716x_ext_boot(struct saa716x_dev *saa716x)
 	 * DW_19 = 0x0000_2000
 	 */
 	SAA716x_EPWR(GREG, GREG_RSTU_CTRL, 0x00002000);
-#if 0
-	/* End of Boot script command
-	 * DW_20 = 0x0000_0006
-	 * Where to write this value ??
-	 * This seems very odd an address to trigger the
-	 * Boot Control State Machine !
-	 */
-	SAA716x_EPWR(VI0, 0x00000006, 0xffffffff);
-#endif
+
 	return 0;
 }
 
@@ -263,14 +254,14 @@ int saa716x_jetpack_init(struct saa716x_dev *saa716x)
 		dprintk(SAA716x_DEBUG, 1, "SAA%02x Decoder disable", saa716x->pdev->device);
 		SAA716x_EPWR(GPIO, GPIO_OEN, 0xfcffffff);
 		SAA716x_EPWR(GPIO, GPIO_WR,  0x00000000); /* Disable decoders */
-		msleep(10);
+		usleep_range(10000, 15000);
 		SAA716x_EPWR(GPIO, GPIO_WR,  0x03000000); /* Enable decoders */
 		break;
 	case SAA7161:
 		dprintk(SAA716x_DEBUG, 1, "SAA%02x Decoder disable", saa716x->pdev->device);
 		SAA716x_EPWR(GPIO, GPIO_OEN, 0xfeffffff);
 		SAA716x_EPWR(GPIO, GPIO_WR,  0x00000000); /* Disable decoders */
-		msleep(10);
+		usleep_range(10000, 15000);
 		SAA716x_EPWR(GPIO, GPIO_WR,  0x01000000); /* Enable decoder */
 		break;
 	case SAA7160:

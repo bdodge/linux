@@ -35,7 +35,8 @@ struct saa716x_i2c {
 	enum saa716x_i2c_rate		i2c_rate; /* run time */
 	enum saa716x_i2c_mode		i2c_mode;
 	u32				block_size; /* block size for buffered
-						       mode, 1 otherwise */
+						     * mode, 1 otherwise
+						     */
 	u32				i2c_stat;
 
 	u32				stat_tx_prior;

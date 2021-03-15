@@ -1,20 +1,18 @@
 #include <linux/delay.h>
-
-#include <linux/signal.h>
-#include <linux/sched.h>
 #include <linux/interrupt.h>
+#include <linux/sched.h>
+#include <linux/signal.h>
 
 #include "saa716x_mod.h"
 
 #include "saa716x_msi_reg.h"
 #include "saa716x_msi.h"
-#include "saa716x_spi.h"
 
 #include "saa716x_priv.h"
 
 #define SAA716x_MSI_VECTORS		50
 
-static const char *vector_name[] = {
+static const char * const vector_name[] = {
 	"TAGACK_VI0_0",
 	"TAGACK_VI0_1",
 	"TAGACK_VI0_2",
@@ -335,7 +333,7 @@ int saa716x_msi_init(struct saa716x_dev *saa716x)
 	if (ena_h)
 		SAA716x_EPWR(MSI, MSI_INT_ENA_CLR_H, ena_h);
 
-	msleep(5);
+	usleep_range(5000, 7000);
 
 	/* Check IRQ's really disabled */
 	ena_l = SAA716x_EPRD(MSI, MSI_INT_ENA_L);
@@ -348,12 +346,10 @@ int saa716x_msi_init(struct saa716x_dev *saa716x)
 			ena_l, ena_h, sta_l, sta_h);
 
 		return 0;
-	} else {
-		dprintk(SAA716x_DEBUG, 1, "I/O error");
-		return -EIO;
 	}
 
-	return 0;
+	dprintk(SAA716x_DEBUG, 1, "I/O error");
+	return -EIO;
 }
 EXPORT_SYMBOL_GPL(saa716x_msi_init);
 
