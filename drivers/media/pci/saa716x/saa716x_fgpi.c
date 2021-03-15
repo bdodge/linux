@@ -8,7 +8,6 @@
 
 #include "saa716x_dma.h"
 #include "saa716x_fgpi.h"
-#include "saa716x_spi.h"
 #include "saa716x_priv.h"
 
 static const u32 fgpi_ch[] = {
@@ -65,7 +64,7 @@ int saa716x_fgpi_get_write_index(struct saa716x_dev *saa716x, u32 fgpi_index)
 	u32 buf_mode_reg;
 	u32 buf_mode;
 
- 	switch (fgpi_index) {
+	switch (fgpi_index) {
 	case 0: /* FGPI_0 */
 		fgpi_base = FGPI0;
 		buf_mode_reg = BAM_FGPI0_DMA_BUF_MODE;
@@ -87,8 +86,8 @@ int saa716x_fgpi_get_write_index(struct saa716x_dev *saa716x, u32 fgpi_index)
 		break;
 
 	default:
-		printk(KERN_ERR "%s: unexpected fgpi %u\n",
-		       __func__, fgpi_index);
+		dev_err(&saa716x->pdev->dev, "%s: unexpected fgpi %u\n",
+			__func__, fgpi_index);
 		return -1;
 	}
 
@@ -119,8 +118,10 @@ static u32 saa716x_init_ptables(struct saa716x_dmabuf *dmabuf, int channel,
 	if ((stream_params->stream_flags & FGPI_INTERLACED) &&
 	    (stream_params->stream_flags & FGPI_ODD_FIELD) &&
 	    (stream_params->stream_flags & FGPI_EVEN_FIELD)) {
-		/* In interlaced mode the same buffer is written twice, once
-		   the odd field and once the even field */
+		/*
+		 * In interlaced mode the same buffer is written twice, once
+		 * the odd field and once the even field
+		 */
 		SAA716x_EPWR(MMU, MMU_PTA0_LSB(channel), PTA_LSB(dmabuf[0].mem_ptab_phys)); /* Low */
 		SAA716x_EPWR(MMU, MMU_PTA0_MSB(channel), PTA_MSB(dmabuf[0].mem_ptab_phys)); /* High */
 		SAA716x_EPWR(MMU, MMU_PTA1_LSB(channel), PTA_LSB(dmabuf[0].mem_ptab_phys)); /* Low */
@@ -283,11 +284,11 @@ int saa716x_fgpi_start(struct saa716x_dev *saa716x, int port,
 	fgpi_port = fgpi_ch[port];
 
 	SAA716x_EPWR(fgpi_port, FGPI_INTERFACE, 0);
-	msleep(10);
+	usleep_range(10000, 12000);
 
-	if (saa716x_fgpi_setparams(saa716x->fgpi[port].dma_buf, stream_params, port) != 0) {
+	if (saa716x_fgpi_setparams(saa716x->fgpi[port].dma_buf, stream_params,
+				   port))
 		return -EIO;
-	}
 
 	saa716x->fgpi[port].read_index = 0;
 
@@ -304,7 +305,7 @@ int saa716x_fgpi_start(struct saa716x_dev *saa716x, int port,
 	while (i < 500) {
 		if (val & 0x80)
 			break;
-		msleep(10);
+		usleep_range(10000, 12000);
 		val = SAA716x_EPRD(MMU, config);
 		i++;
 	}
@@ -353,14 +354,12 @@ int saa716x_fgpi_init(struct saa716x_dev *saa716x, int port, int dma_buf_size,
 	int ret;
 
 	saa716x->fgpi[port].dma_channel = port + 6;
-	for (i = 0; i < FGPI_BUFFERS; i++)
-	{
+	for (i = 0; i < FGPI_BUFFERS; i++) {
 		ret = saa716x_dmabuf_alloc(saa716x,
 					   &saa716x->fgpi[port].dma_buf[i],
 					   dma_buf_size);
-		if (ret < 0) {
+		if (ret < 0)
 			return ret;
-		}
 	}
 	saa716x->fgpi[port].saa716x = saa716x;
 	tasklet_init(&saa716x->fgpi[port].tasklet, worker,
@@ -377,9 +376,7 @@ int saa716x_fgpi_exit(struct saa716x_dev *saa716x, int port)
 
 	tasklet_kill(&saa716x->fgpi[port].tasklet);
 	for (i = 0; i < FGPI_BUFFERS; i++)
-	{
 		saa716x_dmabuf_free(saa716x, &saa716x->fgpi[port].dma_buf[i]);
-	}
 
 	return 0;
 }

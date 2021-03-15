@@ -17,7 +17,7 @@ struct saa716x_romhdr {
 	u16	data_size;
 	u8	devices;
 	u8	checksum;
-} __attribute__((packed));
+} __packed;
 
 struct saa716x_devinfo {
 	u8	struct_size;
@@ -30,7 +30,7 @@ struct saa716x_devinfo {
 	u8	gpio_id;
 	u16	addr_size;
 	u16	extd_data_size;
-} __attribute__((packed));
+} __packed;
 
 enum saa716x_device_types {
 	DECODER_DEVICE		= 0x00000001,

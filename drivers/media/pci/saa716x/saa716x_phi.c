@@ -1,10 +1,9 @@
 #include <linux/kernel.h>
 
-#include "saa716x_mod.h"
+	#include "saa716x_mod.h"
 
 #include "saa716x_phi_reg.h"
 
-#include "saa716x_spi.h"
 #include "saa716x_phi.h"
 #include "saa716x_priv.h"
 
@@ -28,27 +27,17 @@ u32 PHI_1_REGS[] = {
 	PHI_1_7_CONFIG
 };
 
-#define PHI_BASE(__port)	((				\
-	(__port == PHI_1) ?					\
-		PHI_1_BASE :					\
-		PHI_0_BASE					\
-))
+#define PHI_BASE(__port)	(((__port) == PHI_1) ? \
+					PHI_1_BASE : PHI_0_BASE)
 
-#define PHI_APERTURE(_port)	((				\
-	(__port == PHI_1) ?					\
-		PHI_1_APERTURE:					\
-		PHI_0_APERTURE					\
-))
+#define PHI_APERTURE(_port)	(((__port) == PHI_1) ? \
+					PHI_1_APERTURE : PHI_0_APERTURE)
 
-#define PHI_REG(__port, __reg)	((				\
-	(__port == PHI_1) ?					\
-		PHI_1_REGS[__reg] :				\
-		PHI_0_REGS[__reg]				\
-))
+#define PHI_REG(__port, __reg)	(((__port) == PHI_1) ? \
+					PHI_1_REGS[__reg] : PHI_0_REGS[__reg])
 
-#define PHI_SLAVE(__port, __slave)	((			\
-	PHI_BASE(__port) + (__slave * (PHI_APERTURE(__port)))	\
-))
+#define PHI_SLAVE(__port, __slave)	\
+		(PHI_BASE(__port) + (__slave * (PHI_APERTURE(__port))))
 
 /* // Read SAA716x registers
  * SAA716x_EPRD(PHI_0, PHI_REG(__port, __reg))
@@ -67,7 +56,7 @@ int saa716x_init_phi(struct saa716x_dev *saa716x, u32 port, u8 slave)
 	SAA716x_EPWR(PHI_0, PHI_SW_RST, 0x1);
 
 	for (i = 0; i < 20; i++) {
-		msleep(1);
+		usleep_range(1000, 2000);
 		if (!(SAA716x_EPRD(PHI_0, PHI_SW_RST)))
 			break;
 	}
@@ -113,7 +102,8 @@ int saa716x_phi_init(struct saa716x_dev *saa716x)
 }
 EXPORT_SYMBOL_GPL(saa716x_phi_init);
 
-int saa716x_phi_write(struct saa716x_dev *saa716x, u32 address, const u8 * data, int length)
+int saa716x_phi_write(struct saa716x_dev *saa716x, u32 address, const u8 *data,
+		      int length)
 {
 	int i;
 
@@ -126,7 +116,8 @@ int saa716x_phi_write(struct saa716x_dev *saa716x, u32 address, const u8 * data,
 }
 EXPORT_SYMBOL_GPL(saa716x_phi_write);
 
-int saa716x_phi_read(struct saa716x_dev *saa716x, u32 address, u8 * data, int length)
+int saa716x_phi_read(struct saa716x_dev *saa716x, u32 address, u8 *data,
+		     int length)
 {
 	int i;
 
@@ -139,13 +130,13 @@ int saa716x_phi_read(struct saa716x_dev *saa716x, u32 address, u8 * data, int le
 }
 EXPORT_SYMBOL_GPL(saa716x_phi_read);
 
-int saa716x_phi_write_fifo(struct saa716x_dev *saa716x, const u8 * data, int length)
+int saa716x_phi_write_fifo(struct saa716x_dev *saa716x, const u8 *data,
+			   int length)
 {
 	int i;
 
-	for (i = 0; i < length; i += 4) {
+	for (i = 0; i < length; i += 4)
 		SAA716x_EPWR(PHI_0, PHI_0_0_RW_0, *((u32 *) &data[i]));
-	}
 
 	return 0;
 }
