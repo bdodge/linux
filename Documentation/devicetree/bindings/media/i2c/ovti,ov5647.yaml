@@ -26,6 +26,15 @@ properties:
     description: Reference to the xclk clock.
     maxItems: 1
 
+  dvdd-supply:
+    description: Digital Domain Power Supply
+
+  avdd-supply:
+    description: Analog Domain Power Supply (internal AVDD is used if missing)
+
+  dovdd-supply:
+    description: I/O Domain Power Supply
+
   pwdn-gpios:
     description: Reference to the GPIO connected to the pwdn pin. Active high.
     maxItems: 1
@@ -62,6 +71,9 @@ examples:
             compatible = "ovti,ov5647";
             reg = <0x36>;
             clocks = <&camera_clk>;
+            dvdd-supply = <&ov5647_dvdd>;
+            avdd-supply = <&ov5647_avdd>;
+            dovdd-supply = <&ov5647_dovdd>;
             pwdn-gpios = <&pioE 29 GPIO_ACTIVE_HIGH>;
 
             port {
