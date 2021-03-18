@@ -18,8 +18,11 @@
 				reg = <0x36>;
 				status = "okay";
 
-				pwdn-gpios = <&gpio 41 1>, <&gpio 32 1>;
 				clocks = <&ov5647_clk>;
+
+				avdd-supply = <&cam1_reg>;
+				dovdd-supply = <&ov5647_dovdd>;
+				dvdd-supply = <&ov5647_dvdd>;
 
 				rotation = <0>;
 
@@ -66,23 +69,36 @@
 	};
 
 	fragment@4 {
-		target-path="/__overrides__";
+		target-path="/";
 		__overlay__ {
-			cam0-pwdn-ctrl = <&ov5647>,"pwdn-gpios:0";
-			cam0-pwdn      = <&ov5647>,"pwdn-gpios:4";
-			cam0-led-ctrl  = <&ov5647>,"pwdn-gpios:12";
-			cam0-led       = <&ov5647>,"pwdn-gpios:16";
-		};
-	};
+			ov5647_dovdd: fixedregulator@1 {
+				compatible = "regulator-fixed";
+				regulator-name = "ov5647_dovdd";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+			};
+			ov5647_dvdd: fixedregulator@2 {
+				compatible = "regulator-fixed";
+				regulator-name = "ov5647_dvdd";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <1200000>;
+			};
 
-	fragment@5 {
-		target-path = "/";
-		__overlay__ {
 			ov5647_clk: camera-clk {
 				compatible = "fixed-clock";
 				#clock-cells = <0>;
 				clock-frequency = <25000000>;
 			};
+		};
+	};
+
+	fragment@5 {
+		target = <&cam1_reg>;
+		__overlay__ {
+			status = "okay";
+			regulator-name = "ov5647_avdd";
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
 		};
 	};
 
