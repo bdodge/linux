@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/of_graph.h>
 #include <linux/pm_runtime.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 #include <media/v4l2-ctrls.h>
@@ -80,6 +81,16 @@
 #define OV5647_EXPOSURE_DEFAULT		1000
 #define OV5647_EXPOSURE_MAX		65535
 
+/* regulator supplies */
+static const char * const ov5647_supply_names[] = {
+	/* Power up in this order */
+	"dovdd",	/* Digital I/O power - 1.7-3.0V*/
+	"avdd",		/* Analog power - 2.8V */
+	"dvdd",		/* Digital core power - 1.5V*/
+};
+
+#define OV5647_NUM_SUPPLIES ARRAY_SIZE(ov5647_supply_names)
+
 struct regval_list {
 	u16 addr;
 	u8 data;
@@ -101,6 +112,7 @@ struct ov5647 {
 	struct mutex			lock;
 	struct clk			*xclk;
 	struct gpio_desc		*pwdn;
+	struct regulator_bulk_data supplies[OV5647_NUM_SUPPLIES];
 	bool				clock_ncont;
 	struct v4l2_ctrl_handler	ctrls;
 	const struct ov5647_mode	*mode;
@@ -783,6 +795,12 @@ static int ov5647_power_on(struct device *dev)
 
 	dev_dbg(dev, "OV5647 power on\n");
 
+	ret = regulator_bulk_enable(OV5647_NUM_SUPPLIES, sensor->supplies);
+	if (ret < 0) {
+		dev_err(dev, "Failed to enable regulators\n");
+		return ret;
+	}
+
 	if (sensor->pwdn) {
 		gpiod_set_value_cansleep(sensor->pwdn, 0);
 		msleep(PWDN_ACTIVE_DELAY_MS);
@@ -813,7 +831,10 @@ static int ov5647_power_on(struct device *dev)
 error_clk_disable:
 	clk_disable_unprepare(sensor->xclk);
 error_pwdn:
-	gpiod_set_value_cansleep(sensor->pwdn, 1);
+	if (sensor->pwdn)
+		gpiod_set_value_cansleep(sensor->pwdn, 1);
+
+	regulator_bulk_disable(OV5647_NUM_SUPPLIES, sensor->supplies);
 
 	return ret;
 }
@@ -843,6 +864,8 @@ static int ov5647_power_off(struct device *dev)
 
 	clk_disable_unprepare(sensor->xclk);
 	gpiod_set_value_cansleep(sensor->pwdn, 1);
+
+	regulator_bulk_disable(OV5647_NUM_SUPPLIES, sensor->supplies);
 
 	return 0;
 }
@@ -1385,6 +1408,17 @@ out:
 	return ret;
 }
 
+static int ov5647_get_regulators(struct device *dev, struct ov5647 *sensor)
+{
+	unsigned int i;
+
+	for (i = 0; i < OV5647_NUM_SUPPLIES; i++)
+		sensor->supplies[i].supply = ov5647_supply_names[i];
+
+	return devm_regulator_bulk_get(dev, OV5647_NUM_SUPPLIES,
+				       sensor->supplies);
+}
+
 static int ov5647_probe(struct i2c_client *client)
 {
 	struct device_node *np = client->dev.of_node;
@@ -1416,6 +1450,12 @@ static int ov5647_probe(struct i2c_client *client)
 	if (xclk_freq != 25000000) {
 		dev_err(dev, "Unsupported clock frequency: %u\n", xclk_freq);
 		return -EINVAL;
+	}
+
+	ret = ov5647_get_regulators(dev, sensor);
+	if (ret) {
+		dev_err(dev, "failed to get regulators\n");
+		return ret;
 	}
 
 	/* Request the power down GPIO asserted. */
