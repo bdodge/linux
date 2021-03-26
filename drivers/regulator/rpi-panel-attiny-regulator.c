@@ -97,6 +97,7 @@ static const struct regulator_desc attiny_regulator = {
 	.ops	= &attiny_regulator_ops,
 	.type	= REGULATOR_VOLTAGE,
 	.owner	= THIS_MODULE,
+	.enable_time = 100000,
 };
 
 static int attiny_update_status(struct backlight_device *bl)
