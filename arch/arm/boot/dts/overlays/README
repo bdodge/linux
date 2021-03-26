@@ -3141,10 +3141,14 @@ Params: cma-512                 CMA is 512MB (needs 1GB)
 
 Name:   vc4-kms-dsi-7inch
 Info:   Enable the Raspberry Pi DSI 7" screen.
-        Use edt-ft5406 for the touchscreen element.
+        Includes the edt-ft5406 for the touchscreen element.
         Requires vc4-kms-v3d to be loaded.
 Load:   dtoverlay=vc4-kms-dsi-7inch
-Params: <None>
+Params: sizex                   Touchscreen size x (default 800)
+        sizey                   Touchscreen size y (default 480)
+        invx                    Touchscreen inverted x axis
+        invy                    Touchscreen inverted y axis
+        swapxy                  Touchscreen swapped x y axis
 
 
 Name:   vc4-kms-kippah-7inch
