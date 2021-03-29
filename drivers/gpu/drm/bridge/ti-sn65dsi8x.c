@@ -206,8 +206,8 @@ static void sn65dsi_enable(struct drm_bridge *bridge)
 			   DSI_CLK_DIV_MASK, val << DSI_CLK_DIV_SHIFT);
 
 	/* configure dsi */
-	regmap_update_bits(sn->regmap, SN65DSI_DSI_CFG,
-			   CHA_DSI_LANES_MASK, lanes << CHA_DSI_LANES_SHIFT);
+	regmap_update_bits(sn->regmap, SN65DSI_DSI_CFG, CHA_DSI_LANES_MASK,
+			   (4 - lanes) << CHA_DSI_LANES_SHIFT);
 
 	/* dsi clock range */
 	val = sn65dsi_get_clk_range(8, 100, dsi_clk, 40000000, 5000000);
