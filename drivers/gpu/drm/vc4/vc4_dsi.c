@@ -1226,7 +1226,7 @@ static ssize_t vc4_dsi_host_transfer(struct mipi_dsi_host *host,
 	/* Enable the appropriate interrupt for the transfer completion. */
 	dsi->xfer_result = 0;
 	reinit_completion(&dsi->xfer_completion);
-	if (!dsi->port) {
+	if (!dsi->variant->port) {
 		DSI_PORT_WRITE(INT_STAT,
 			       DSI0_INT_CMDC_DONE_MASK | DSI1_INT_PHY_DIR_RTF);
 		if (msg->rx_len) {
@@ -1459,8 +1459,8 @@ static irqreturn_t vc4_dsi_irq_handler(int irq, void *data)
 	dsi_handle_error(dsi, &ret, stat,
 			 DSI_PORT_BIT(INT_PR_TO), "peripheral reset timeout");
 
-	if (stat & ((dsi->port ? DSI1_INT_TXPKT1_DONE :
-				 DSI0_INT_CMDC_DONE_MASK) |
+	if (stat & ((dsi->variant->port ? DSI1_INT_TXPKT1_DONE :
+					  DSI0_INT_CMDC_DONE_MASK) |
 		    DSI_PORT_BIT(INT_PHY_DIR_RTF))) {
 		complete(&dsi->xfer_completion);
 		ret = IRQ_HANDLED;
