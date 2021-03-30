@@ -357,14 +357,18 @@ static int sn65dsi_parse_dt(struct sn65dsi *sn)
 
 	ret = drm_of_find_panel_or_bridge(dev->of_node, SN65DSI_OUT0_LVDS,
 					  0, &panel, NULL);
-	if (ret < 0)
+	if (ret < 0) {
+		DRM_DEV_ERROR(dev, "find_panel_or_bridge failed %d\n", ret);
 		return ret;
+	}
 	if (!panel)
 		return -ENODEV;
 
 	sn->panel_bridge = devm_drm_panel_bridge_add(dev, panel);
-	if (IS_ERR(sn->panel_bridge))
+	if (IS_ERR(sn->panel_bridge)) {
+		DRM_DEV_ERROR(dev, "panel_bridge_add failed %ld\n", PTR_ERR(sn->panel_bridge));
 		return PTR_ERR(sn->panel_bridge);
+	}
 
 	/*
 	 * To get the data-lanes of dsi, we need to access the port1 of dsi_out
@@ -373,31 +377,39 @@ static int sn65dsi_parse_dt(struct sn65dsi *sn)
 	endpoint = of_graph_get_endpoint_by_regs(dev->of_node, SN65DSI_IN_DSI, -1);
 	if (endpoint) {
 		/* dsi_out node */
-		parent = of_graph_get_remote_port_parent(endpoint);
+		parent = of_graph_get_remote_port(endpoint);
 		of_node_put(endpoint);
 		if (parent) {
-			/* dsi port 1 */
-			endpoint = of_graph_get_endpoint_by_regs(parent, 1, -1);
+			endpoint = of_get_next_child(parent, NULL);
 			of_node_put(parent);
 			if (endpoint) {
 				prop = of_find_property(endpoint, "data-lanes", &len);
 				of_node_put(endpoint);
 				if (!prop) {
-					DRM_DEV_ERROR(dev, "failed to find data lane\n");
+					DRM_DEV_ERROR(dev, "%d lanes is invalid\n", sn->dsi_lanes);
 					return -EPROBE_DEFER;
 				}
+				DRM_DEV_ERROR(dev, "ALL GOOD 1 len %d\n", len);
+			} else {
+				DRM_DEV_ERROR(dev, "No endpoint under parent");
 			}
+		} else {
+			DRM_DEV_ERROR(dev, "no parent\n");
 		}
 	}
 
 	sn->dsi_lanes = len / sizeof(u32);
-	if (sn->dsi_lanes < 1 || sn->dsi_lanes > 4)
+	if (sn->dsi_lanes < 1 || sn->dsi_lanes > 4) {
+		DRM_DEV_ERROR(dev, "%d lanes is invalid\n", sn->dsi_lanes);
 		return -EINVAL;
+	}
 
 	sn->host_node = of_graph_get_remote_node(dev->of_node, 0, 0);
-	if (!sn->host_node)
+	if (!sn->host_node) {
+		DRM_DEV_ERROR(dev, "No host_node\n");
 		return -ENODEV;
-
+	}
+	DRM_DEV_ERROR(dev, "ALL GOOD\n");
 	of_node_put(sn->host_node);
 
 	/* TODO OUT1_LVDS is not parsed yet */
@@ -425,9 +437,12 @@ static int sn65dsi_probe(struct i2c_client *client)
 	}
 
 	ret = sn65dsi_parse_dt(sn);
-	if (ret)
+	if (ret) {
+		DRM_ERROR("Failed to parse SN65DSI8x DT\n");
 		return ret;
+	}
 
+	DRM_ERROR("SN65DSI8x DT all good\n");
 	sn->bridge.funcs = &sn65dsi_bridge_funcs;
 	sn->bridge.of_node = client->dev.of_node;
 
