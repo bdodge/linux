@@ -568,6 +568,10 @@ int vc4_hvs_atomic_check(struct drm_crtc *crtc,
 	if (ret)
 		return ret;
 
+	if (vc4->hvs->hvs5 && state->color_mgmt_changed)
+		/* HVS5 gamma PWL can not be updated whilst active */
+		state->mode_changed = true;
+
 	return 0;
 }
 
