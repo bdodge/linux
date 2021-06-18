@@ -7,7 +7,7 @@ Low voltage LVDS DDR output and CSI-2 serial data output. The CSI-2 bus is the
 default. No bindings have been defined for the other busses.
 
 Required Properties:
-- compatible: Should be "sony,imx290"
+- compatible: Should be "sony,imx290" or "sony,imx290-mono"
 - reg: I2C bus address of the device
 - clocks: Reference to the xclk clock.
 - clock-names: Should be "xclk".
