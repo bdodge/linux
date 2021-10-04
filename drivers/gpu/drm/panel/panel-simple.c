@@ -1846,7 +1846,7 @@ static const struct display_timing chunghwa_claa070wp03xglvds_timing = {
 	.vactive = { 1280, 1280, 1280 },
 	.vfront_porch = { 5, 5, 5 },
 	.vback_porch = { 2, 2, 2 },
-	.vsync_len = { 1, 1, 1 },
+	.vsync_len = { 2, 2, 2 },
 	.flags = DRM_MODE_FLAG_NHSYNC |
 		 DRM_MODE_FLAG_NVSYNC |
 		 DISPLAY_FLAGS_DE_HIGH,
