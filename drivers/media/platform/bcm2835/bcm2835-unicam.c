@@ -85,6 +85,10 @@ static int media_controller;
 module_param(media_controller, int, 0644);
 MODULE_PARM_DESC(media_controller, "Use media controller API");
 
+static int allow_interlaced;
+module_param(allow_interlaced, int, 0644);
+MODULE_PARM_DESC(debug, "Non-zero permits interlaced sources in s_fmt");
+
 #define unicam_dbg(level, dev, fmt, arg...)	\
 		v4l2_dbg(level, debug, &(dev)->v4l2_dev, fmt, ##arg)
 #define unicam_info(dev, fmt, arg...)	\
@@ -469,6 +473,8 @@ struct unicam_node {
 	struct v4l2_format v_fmt;
 	/* Used to store current mbus frame format */
 	struct v4l2_mbus_framefmt m_fmt;
+	/* Used to store the current video standard */
+	v4l2_std_id std;
 	/* Buffer queue used in video-buf */
 	struct vb2_queue buffer_queue;
 	/* Queue of filled frames */
@@ -848,13 +854,33 @@ static void unicam_schedule_dummy_buffer(struct unicam_node *node)
 	node->next_frm = NULL;
 }
 
-static void unicam_process_buffer_complete(struct unicam_node *node,
-					   unsigned int sequence)
+static int unicam_process_buffer_complete(struct unicam_node *node,
+					   unsigned int sequence,
+					   unsigned int frame_num)
 {
-	node->cur_frm->vb.field = node->m_fmt.field;
+	int ret = 1;
+
+	if (node->m_fmt.field == V4L2_FIELD_ALTERNATE) {
+		/*
+		 * (Murphy's law says I'll have got these backwards)
+		 * For NTSC the top frame is sent with frame_num 2.
+		 * For PAL and SECAM the top frame is sent with frame_num 1.
+		 */
+		if ((frame_num == 1) ^ (node->std & V4L2_STD_NTSC)) {
+			node->cur_frm->vb.field = V4L2_FIELD_TOP;
+			ret = 0;
+		} else {
+			node->cur_frm->vb.field = V4L2_FIELD_BOTTOM;
+		}
+
+	} else {
+		node->cur_frm->vb.field = node->m_fmt.field;
+	}
 	node->cur_frm->vb.sequence = sequence;
 
 	vb2_buffer_done(&node->cur_frm->vb.vb2_buf, VB2_BUF_STATE_DONE);
+
+	return ret;
 }
 
 static void unicam_queue_event_sof(struct unicam_device *unicam)
@@ -880,6 +906,7 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	struct unicam_device *unicam = dev;
 	unsigned int lines_done = unicam_get_lines_done(dev);
 	unsigned int sequence = unicam->sequence;
+	unsigned int frame_number = 0;
 	unsigned int i;
 	u32 ista, sta;
 	bool fe;
@@ -892,6 +919,17 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	ista = reg_read(unicam, UNICAM_ISTA);
 	/* Write value back to clear the interrupts */
 	reg_write(unicam, UNICAM_ISTA, ista);
+
+	if (sta & UNICAM_PI0) {
+		u32 cap0 = reg_read(unicam, UNICAM_CAP0);
+
+		if (get_field(cap0, UNICAM_CPHV))
+			frame_number = get_field(cap0, UNICAM_CWC_MASK);
+
+		reg_write(unicam, UNICAM_CAP0, 0x80000000);
+
+		ista |= UNICAM_FEI;
+	}
 
 	unicam_dbg(3, unicam, "ISR: ISTA: 0x%X, STA: 0x%X, sequence %d, lines done %d",
 		   ista, sta, sequence, lines_done);
@@ -912,6 +950,7 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	 * buffer forever.
 	 */
 	if (fe) {
+		int inc_sequence = 1;
 		/*
 		 * Ensure we have swapped buffers already as we can't
 		 * stop the peripheral. If no buffer is available, use a
@@ -931,11 +970,13 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 			 */
 			if (unicam->node[i].cur_frm &&
 			    unicam->node[i].cur_frm != unicam->node[i].next_frm)
-				unicam_process_buffer_complete(&unicam->node[i],
-							       sequence);
+				inc_sequence = unicam_process_buffer_complete(&unicam->node[i],
+							       sequence,
+							       frame_number);
 			unicam->node[i].cur_frm = unicam->node[i].next_frm;
 		}
-		unicam->sequence++;
+		if (inc_sequence)
+			unicam->sequence++;
 	}
 
 	if (ista & UNICAM_FSI) {
@@ -1210,7 +1251,8 @@ static int unicam_try_fmt_vid_cap(struct file *file, void *priv,
 	 * No support for receiving interlaced video, so never
 	 * request it from the sensor subdev.
 	 */
-	mbus_fmt->field = V4L2_FIELD_NONE;
+	if (!allow_interlaced)
+		mbus_fmt->field = V4L2_FIELD_NONE;
 
 	ret = v4l2_subdev_call(dev->sensor, pad, set_fmt, dev->sensor_config,
 			       &sd_fmt);
@@ -1482,6 +1524,8 @@ static int unicam_s_std(struct file *file, void *priv, v4l2_std_id std)
 	node->v_fmt.fmt.pix.bytesperline = 0;
 
 	unicam_reset_format(node);
+
+	node->std = std;
 
 	return ret;
 }
