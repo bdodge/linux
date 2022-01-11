@@ -539,6 +539,12 @@ struct unicam_device {
 	struct v4l2_ctrl_handler ctrl_handler;
 
 	bool mc_api;
+
+	/* Statistics */
+	unsigned int single_bit_errors;
+	unsigned int parity_bit_errors;
+	unsigned int multi_bit_errors;
+	unsigned int crc_errors;
 };
 
 static inline struct unicam_device *
@@ -893,6 +899,15 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	/* Write value back to clear the interrupts */
 	reg_write(unicam, UNICAM_ISTA, ista);
 
+	if (sta & UNICAM_SBE)
+		unicam->single_bit_errors++;
+	if (sta & UNICAM_PBE)
+		unicam->parity_bit_errors++;
+	if (sta & UNICAM_HOE)
+		unicam->multi_bit_errors++;
+	if (sta & UNICAM_CRCE)
+		unicam->crc_errors++;
+
 	unicam_dbg(3, unicam, "ISR: ISTA: 0x%X, STA: 0x%X, sequence %d, lines done %d",
 		   ista, sta, sequence, lines_done);
 
@@ -1036,6 +1051,15 @@ static int unicam_log_status(struct file *file, void *fh)
 		    reg_read(dev, UNICAM_IVSTA));
 	unicam_info(dev, "Write pointer:       %08x\n",
 		    reg_read(dev, UNICAM_IBWP));
+	unicam_info(dev, "----Error statistics----\n");
+	unicam_info(dev, "Single bit errors (corrected): %8u\n",
+		    dev->single_bit_errors);
+	unicam_info(dev, "Parity bit errors:             %8u\n",
+		    dev->parity_bit_errors);
+	unicam_info(dev, "Multiple bit errors:           %8u\n",
+		    dev->multi_bit_errors);
+	unicam_info(dev, "CRC errors:                    %8u\n",
+		    dev->crc_errors);
 
 	return 0;
 }
