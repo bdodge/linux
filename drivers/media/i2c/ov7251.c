@@ -42,6 +42,8 @@
 #define OV7251_PRE_ISP_00		0x5e00
 #define OV7251_PRE_ISP_00_TEST_PATTERN	BIT(7)
 
+#define OV7251_PIXEL_CLOCK 48000000
+
 struct reg_value {
 	u16 reg;
 	u8 val;
@@ -52,7 +54,6 @@ struct ov7251_mode_info {
 	u32 height;
 	const struct reg_value *data;
 	u32 data_size;
-	u32 pixel_clock;
 	u32 link_freq;
 	u16 exposure_max;
 	u16 exposure_def;
@@ -77,7 +78,6 @@ struct ov7251 {
 	const struct ov7251_mode_info *current_mode;
 
 	struct v4l2_ctrl_handler ctrls;
-	struct v4l2_ctrl *pixel_clock;
 	struct v4l2_ctrl *link_freq;
 	struct v4l2_ctrl *exposure;
 	struct v4l2_ctrl *gain;
@@ -528,7 +528,6 @@ static const struct ov7251_mode_info ov7251_mode_info_data[] = {
 		.height = 480,
 		.data = ov7251_setting_vga_30fps,
 		.data_size = ARRAY_SIZE(ov7251_setting_vga_30fps),
-		.pixel_clock = 48000000,
 		.link_freq = 0, /* an index in link_freq[] */
 		.exposure_max = 1704,
 		.exposure_def = 504,
@@ -542,7 +541,6 @@ static const struct ov7251_mode_info ov7251_mode_info_data[] = {
 		.height = 480,
 		.data = ov7251_setting_vga_60fps,
 		.data_size = ARRAY_SIZE(ov7251_setting_vga_60fps),
-		.pixel_clock = 48000000,
 		.link_freq = 0, /* an index in link_freq[] */
 		.exposure_max = 840,
 		.exposure_def = 504,
@@ -556,7 +554,6 @@ static const struct ov7251_mode_info ov7251_mode_info_data[] = {
 		.height = 480,
 		.data = ov7251_setting_vga_90fps,
 		.data_size = ARRAY_SIZE(ov7251_setting_vga_90fps),
-		.pixel_clock = 48000000,
 		.link_freq = 0, /* an index in link_freq[] */
 		.exposure_max = 552,
 		.exposure_def = 504,
@@ -1052,11 +1049,6 @@ static int ov7251_set_format(struct v4l2_subdev *sd,
 	__crop->height = new_mode->height;
 
 	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-		ret = __v4l2_ctrl_s_ctrl_int64(ov7251->pixel_clock,
-					       new_mode->pixel_clock);
-		if (ret < 0)
-			goto exit;
-
 		ret = __v4l2_ctrl_s_ctrl(ov7251->link_freq,
 					 new_mode->link_freq);
 		if (ret < 0)
@@ -1192,11 +1184,6 @@ static int ov7251_set_frame_interval(struct v4l2_subdev *subdev,
 	new_mode = ov7251_find_mode_by_ival(ov7251, &fi->interval);
 
 	if (new_mode != ov7251->current_mode) {
-		ret = __v4l2_ctrl_s_ctrl_int64(ov7251->pixel_clock,
-					       new_mode->pixel_clock);
-		if (ret < 0)
-			goto exit;
-
 		ret = __v4l2_ctrl_s_ctrl(ov7251->link_freq,
 					 new_mode->link_freq);
 		if (ret < 0)
@@ -1358,10 +1345,9 @@ static int ov7251_probe(struct i2c_client *client)
 				     V4L2_CID_TEST_PATTERN,
 				     ARRAY_SIZE(ov7251_test_pattern_menu) - 1,
 				     0, 0, ov7251_test_pattern_menu);
-	ov7251->pixel_clock = v4l2_ctrl_new_std(&ov7251->ctrls,
-						&ov7251_ctrl_ops,
-						V4L2_CID_PIXEL_RATE,
-						1, INT_MAX, 1, 1);
+	v4l2_ctrl_new_std(&ov7251->ctrls, &ov7251_ctrl_ops,
+			  V4L2_CID_PIXEL_RATE, OV7251_PIXEL_CLOCK,
+			  OV7251_PIXEL_CLOCK, 1, OV7251_PIXEL_CLOCK);
 	ov7251->link_freq = v4l2_ctrl_new_int_menu(&ov7251->ctrls,
 						   &ov7251_ctrl_ops,
 						   V4L2_CID_LINK_FREQ,
