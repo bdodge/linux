@@ -1719,7 +1719,7 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 
 	drm_simple_encoder_init(drm, dsi->encoder, DRM_MODE_ENCODER_DSI);
 
-	ret = drm_bridge_attach(dsi->encoder, dsi->bridge, NULL, 0);
+	ret = drm_bridge_attach(dsi->encoder, &dsi->bridge, NULL, 0);
 	if (ret)
 		return ret;
 
