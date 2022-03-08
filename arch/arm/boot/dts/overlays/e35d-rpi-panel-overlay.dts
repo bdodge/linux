@@ -1,0 +1,33 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835,brcm,bcm2709,brcm,bcm2711";
+
+	fragment@0 {
+		target = <&dsi1>;
+		__overlay__{
+			status = "okay";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port {
+				dsi_out_port:endpoint {
+					remote-endpoint = <&panel_dsi_port>;
+				};
+			};
+
+			lli9806e:lli9806e@0 {
+				compatible = "focus,e335rc-b-mw420";
+				status        = "okay";
+				reg           = <0>;
+				reset-gpios   = <&gpio 17 1>;
+				port {
+					panel_dsi_port: endpoint {
+						remote-endpoint = <&dsi_out_port>;
+					};
+				};
+			};
+		};
+	};
+};
+
