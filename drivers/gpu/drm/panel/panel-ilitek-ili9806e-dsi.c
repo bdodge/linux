@@ -473,6 +473,7 @@ static int ili9806e_dsi_probe(struct mipi_dsi_device *dsi)
 
 	drm_panel_init(&ctx->panel, &dsi->dev, &ili9806e_funcs,
 		       DRM_MODE_CONNECTOR_DSI);
+	ctx->panel.prepare_upstream_first = true;
 
 	ret = drm_panel_of_backlight(&ctx->panel);
 	if (ret)
