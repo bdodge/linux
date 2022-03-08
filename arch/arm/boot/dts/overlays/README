@@ -831,6 +831,12 @@ Params: dr_mode                 Dual role mode: "host", "peripheral" or "otg"
 [ The ds1307-rtc overlay has been deleted. See i2c-rtc. ]
 
 
+Name:   e35d-rpi-panel
+Info:   TFT LCD DSI display on Raspberry Pi
+Load:   dtoverlay=e35d-rpi-panel
+Params: <None>
+
+
 Name:   edt-ft5406
 Info:   Overlay for the EDT FT5406 touchscreen on the CSI/DSI I2C interface.
         This works with the Raspberry Pi 7" touchscreen when not being polled
